@@ -1,0 +1,15 @@
+CONFIG_ESPTOOLPY_FLASHMODE_DIO=y
+
+# 16MB whatever the chip (some units have 32MB): filesystems above 16MiB break (MicroPython #19766).
+CONFIG_ESPTOOLPY_FLASHSIZE_4MB=
+CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y
+CONFIG_PARTITION_TABLE_CUSTOM=y
+
+# The power latch is set only once the app starts; the 8MiB PSRAM test would delay it.
+CONFIG_SPIRAM_MEMTEST=
+
+# USB-C reaches only the CH343P, and USB-Serial/JTAG's pads (GPIO19/20) are the PDM mic: no log
+# console there (as in Seeed's demos), and the module off so the IDF releases its pads and clock.
+CONFIG_ESP_CONSOLE_SECONDARY_NONE=y
+CONFIG_ESP_CONSOLE_SECONDARY_USB_SERIAL_JTAG=
+CONFIG_USJ_ENABLE_USB_SERIAL_JTAG=

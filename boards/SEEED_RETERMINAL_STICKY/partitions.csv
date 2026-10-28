@@ -1,0 +1,8 @@
+# The first 16MiB only. Without a vfs row MicroPython makes one up to the end of flash,
+# and filesystems above 16MiB break (MicroPython #19766).
+# The 3MiB app leaves room for frozen fonts and images.
+# Name,   Type, SubType, Offset,   Size, Flags
+nvs,      data, nvs,     0x9000,   0x6000,
+phy_init, data, phy,     0xf000,   0x1000,
+factory,  app,  factory, 0x10000,  0x300000,
+vfs,      data, fat,     0x310000, 0xcf0000,
