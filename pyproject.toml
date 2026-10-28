@@ -1,0 +1,34 @@
+# Not a Python package: this only pins the host tools, installed with `pip install --group dev`.
+[dependency-groups]
+dev = [
+  "esptool==5.6.0",
+  "micropython-uncrustify==1.0.0.post1",
+  "mpremote==1.29.0",
+  "ruff==0.11.6",
+]
+
+[tool.ruff]
+extend-exclude = ["micropython"]
+line-length = 99
+target-version = "py38"
+builtins = ["ptr", "ptr8", "ptr16", "ptr32", "uint", "micropython", "const"]
+
+[tool.ruff.lint]
+extend-select = ["C9", "PLC", "W292"]
+ignore = [
+  "E401",
+  "E402",
+  "E722",
+  "E731",
+  "E741",
+  "F401",
+  "F403",
+  "F405",
+  "PLC0206",
+  "PLC0415", # conditional imports are common in MicroPython
+]
+mccabe.max-complexity = 40
+
+[tool.ruff.lint.per-file-ignores]
+# manifest.py files are evaluated with some global names pre-defined
+"**/manifest.py" = ["F821"]

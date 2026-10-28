@@ -1,0 +1,15 @@
+# Build output
+build*/
+*.mpy
+__pycache__/
+
+# Firmware images and flash backups: backups hold per-unit NVS and maybe Wi-Fi credentials
+*.bin
+*.elf
+*.uf2
+
+# Host tools
+.venv/
+
+# macOS
+.DS_Store
