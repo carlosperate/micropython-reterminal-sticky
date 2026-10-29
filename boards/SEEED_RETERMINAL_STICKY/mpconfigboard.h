@@ -21,15 +21,15 @@
 #define MICROPY_HW_SPI1_MOSI                (14)
 #define MICROPY_HW_SPI1_MISO                (12)
 
-// No default pins for SPI(2) or SDCard(slot=2): upstream's are the octal PSRAM bus (GPIO33-37),
-// and a second SPI host on the panel's pins would take them from SPI(1).
+// No default pins for SPI(2): upstream's are the octal PSRAM bus (GPIO33-37), and a second SPI
+// host on the panel's pins would take them from SPI(1).
 #define MICROPY_HW_SPI2_SCK                 (-1)
 #define MICROPY_HW_SPI2_MOSI                (-1)
 #define MICROPY_HW_SPI2_MISO                (-1)
-#define MICROPY_HW_SDCARD_SPI_SCK           (GPIO_NUM_NC)
-#define MICROPY_HW_SDCARD_SPI_MOSI          (GPIO_NUM_NC)
-#define MICROPY_HW_SDCARD_SPI_MISO          (GPIO_NUM_NC)
-#define MICROPY_HW_SDCARD_SPI_CS            (GPIO_NUM_NC)
+
+// The card shares the panel's bus, so it's read through a driver on SPI(1). machine.SDCard's
+// SPI slots default to the PSRAM pins (slot 2) and to touch and panel pins on SPI(1)'s host (3).
+#define MICROPY_PY_MACHINE_SDCARD           (0)
 
 // Holds power and enables charging, before Python starts.
 #define MICROPY_BOARD_STARTUP               STICKY_board_startup
