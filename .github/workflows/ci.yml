@@ -1,0 +1,25 @@
+name: CI
+
+on: [push, pull_request]
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - run: git submodule update --init micropython
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - run: pip install --upgrade pip && pip install --group dev
+      - run: ruff check --output-format=github
+      - run: ruff format --diff
+      - run: micropython/tools/codeformat.py -v -c 'boards/**/*.[ch]'
+      - run: git diff --exit-code
+
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - run: make submodules
+      - run: make test
