@@ -1,8 +1,8 @@
 # MicroPython for the reTerminal Sticky
 
 MicroPython firmware and libraries for the Seeed
-[reTerminal Sticky](https://www.seeedstudio.com/sticky/docs/en/device-guide/hardware-overview/)
-(ESP32-S3R8 and a 3.97" 800×480 e-paper panel).
+[reTerminal Sticky](https://www.seeedstudio.com/sticky/docs/en/device-guide/hardware-overview/),
+an ESP32-S3R8 device with a 3.97" 800×480 e-paper panel.
 
 ## Status
 
