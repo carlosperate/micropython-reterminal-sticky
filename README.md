@@ -37,7 +37,9 @@ Erase before the first flash, or MicroPython finds the stock data where its file
 reports it as corrupted.
 
 ```sh
-esptool --chip esp32s3 --port PORT --baud 921600 read-flash 0 ALL sticky-backup.bin
+# Back up takes about 20 minutes, faster rates fail on macOS (see Troubleshooting)
+esptool --chip esp32s3 --port PORT --baud 230400 read-flash 0 ALL sticky-backup.bin
+esptool --chip esp32s3 --port PORT verify-flash 0 sticky-backup.bin
 esptool --chip esp32s3 --port PORT erase-flash
 esptool --chip esp32s3 --port PORT --baud 921600 write-flash 0 build/SEEED_RETERMINAL_STICKY/firmware.bin
 # To go back to stock

@@ -6,6 +6,9 @@ dev = [
   "mpremote==1.29.0",
   "ruff==0.11.6",
 ]
+experiments = [
+  "opencv-python==5.0.0.93",
+]
 
 [tool.ruff]
 extend-exclude = ["micropython"]

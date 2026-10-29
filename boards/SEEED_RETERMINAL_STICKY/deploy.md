@@ -10,8 +10,13 @@ the unit's own data (its Seeedash identity, saved settings and Wi-Fi credentials
 published stock firmware doesn't contain, so this backup is the only way to get it back:
 
 ```bash
-esptool --port PORTNAME --baud 921600 read-flash 0 ALL sticky-backup.bin
+esptool --port PORTNAME --baud 230400 read-flash 0 ALL sticky-backup.bin
+esptool --port PORTNAME verify-flash 0 sticky-backup.bin
 ```
+
+230400 baud takes about 20 minutes, but on macOS the CH343P loses data at 460800 and above with
+Apple's driver. The file should be 33,554,432 bytes, with two halves that differ: identical halves
+mean the read wrapped at 16MiB. Don't erase until `verify-flash` matches.
 
 ### Erasing
 

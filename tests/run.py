@@ -16,7 +16,10 @@ def package_roots(path):
     return roots
 
 
-sys.path[:0] = package_roots("lib") + ["micropython/lib/micropython-lib/python-stdlib/unittest"]
+sys.path[:0] = package_roots("lib") + [
+    "boards/SEEED_RETERMINAL_STICKY/modules",
+    "micropython/lib/micropython-lib/python-stdlib/unittest",
+]
 import unittest
 
 folder = sys.argv[1] if len(sys.argv) > 1 else "tests/device"
