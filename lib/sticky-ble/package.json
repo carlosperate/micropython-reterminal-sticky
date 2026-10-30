@@ -1,0 +1,23 @@
+{
+  "urls": [
+    [
+      "sticky/ble.py",
+      "github:carlosperate/micropython-reterminal-sticky/lib/sticky/sticky/ble.py"
+    ]
+  ],
+  "deps": [
+    [
+      "github:carlosperate/micropython-reterminal-sticky/lib/sticky",
+      "HEAD"
+    ],
+    [
+      "aioble-peripheral",
+      "latest"
+    ],
+    [
+      "aioble-server",
+      "latest"
+    ]
+  ],
+  "version": "0.1.0"
+}

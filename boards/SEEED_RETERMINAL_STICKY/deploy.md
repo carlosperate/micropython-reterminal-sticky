@@ -48,4 +48,5 @@ flashes the published stock image from desktop Chrome or Edge.
 ### Troubleshooting
 
 If flashing starts and then fails partway through, try removing the `--baud 921600` option to
-flash at the slower default speed.
+flash at the slower default speed. On macOS with Apple's driver the CH343P loses data at 460800
+and above, so use `--baud 230400` there.
