@@ -67,6 +67,16 @@ class TestBLEUART(unittest.TestCase):
         self.assertEqual(bytes(buf[:5]), b"lo\nwo")
         self.assertIsNone(self.uart.read())
 
+    # A poll that says readable when nothing is spins an asyncio reader until the next write.
+    def test_poll_after_reading_everything(self):
+        poll, rd = 3, 1  # MP_STREAM_POLL, MP_STREAM_POLL_RD
+        self.assertEqual(self.uart.ioctl(poll, rd), 0)
+        ble.connect()
+        ble.write(b"hi")
+        self.assertEqual(self.uart.ioctl(poll, rd), rd)
+        self.uart.read()
+        self.assertEqual(self.uart.ioctl(poll, rd), 0)
+
     # A loss is a gap: what was waiting goes, and readers can tell from gaps. No framing here.
     def test_overflow_is_a_gap(self):
         ble.connect()

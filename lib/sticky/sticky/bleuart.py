@@ -132,7 +132,7 @@ class BLEUART(io.IOBase):
         if op != _MP_STREAM_POLL:
             return 0
         ready = _MP_STREAM_POLL_WR if arg & _MP_STREAM_POLL_WR else 0
-        if arg & _MP_STREAM_POLL_RD and self._buf:
+        if arg & _MP_STREAM_POLL_RD and self.any():
             ready |= _MP_STREAM_POLL_RD
         return ready
 
