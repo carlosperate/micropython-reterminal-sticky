@@ -6,9 +6,9 @@ an ESP32-S3R8 device with a 3.97" 800×480 e-paper panel.
 
 ## Status
 
-Runs on a unit with the SSD1677 panel: the board definition, a panel driver with partial refresh,
-and a BLE UART (the Nordic UART Service) that can also carry the REPL.
-Not yet: the SSD2677 panel, touch, sensors' drivers, deep sleep.
+Runs on units with the SSD1677 display driver: the board definition, a panel driver with
+partial refresh, and a BLE UART (the Nordic UART Service) that can also carry the REPL.
+Not yet: the alternative SSD2677 driver, touch, sensors' drivers, deep sleep.
 
 ## Getting started
 
@@ -30,10 +30,10 @@ make firmware     # build/SEEED_RETERMINAL_STICKY/firmware.bin
 make unix         # build/unix/micropython, x86-64 for viper (emulated on Apple silicon)
 ```
 
-Flashing runs on the host, as Docker on macOS can't easily access USB devices.
+Flashing runs on the host, as accessing USB devices from Docker is not simple.
 
 Back up the stock firmware first, as the erase removes the unit's own data
-(its Seeedash identity, settings and Wi-Fi credentials), and only a backup brings it back.
+(its Seeedash identity, settings, and Wi-Fi credentials), and only a backup brings it back.
 
 Erase before the first flash, or MicroPython finds the stock data where its filesystem goes and
 reports it as corrupted.
@@ -71,7 +71,7 @@ micropython/tools/codeformat.py -c 'boards/**/*.[ch]'
 
 ## Troubleshooting
 
-**esptool fails partway on macOS** with "Invalid head of packet", "Serial data stream stopped" or
+If **esptool fails partway on macOS** with "Invalid head of packet", "Serial data stream stopped" or
 "Corrupt data". With Apple's built-in driver, the board's WCH CH343P USB-serial chip loses data at
 high baud rates, 460800 and 921600 failed, 230400 worked.
 

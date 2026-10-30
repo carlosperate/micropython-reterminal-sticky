@@ -1,0 +1,44 @@
+<!doctype html>
+<!-- A minimal Web Bluetooth page for the Sticky's BLE UART: connect, send a line, see replies.
+     It's also a terminal for the REPL over BLE (examples/ble_repl.py).
+     Serve it from localhost or https (Web Bluetooth needs a secure context) and open it in Chrome. -->
+<html>
+<head>
+<meta charset="utf-8">
+<title>Sticky BLE UART</title>
+</head>
+
+<body>
+<p>Open this HTML page in Chrome to use the Micropython reTerminalSticky's BLE UART service.</p>
+<button id="connect">Connect</button>
+<form id="send"><input id="line" placeholder="a line to send"> <button>Send</button></form>
+<pre id="log"></pre>
+<script type="module">
+  const UART = '6e400001-b5a3-f393-e0a9-e50e24dcca9e';
+  const RX = '6e400002-b5a3-f393-e0a9-e50e24dcca9e';  // the board receives what we write here
+  const TX = '6e400003-b5a3-f393-e0a9-e50e24dcca9e';  // and notifies what it sends here
+  const log = (text) => { document.getElementById('log').textContent += text; };
+  let rx;
+
+  document.getElementById('connect').onclick = async () => {
+    const device = await navigator.bluetooth.requestDevice({
+      filters: [{ namePrefix: 'sticky-' }], optionalServices: [UART],
+    });
+    const service = await (await device.gatt.connect()).getPrimaryService(UART);
+    rx = await service.getCharacteristic(RX);
+    const tx = await service.getCharacteristic(TX);
+    tx.addEventListener('characteristicvaluechanged', (e) => log(new TextDecoder().decode(e.target.value)));
+    await tx.startNotifications();
+    log(`connected to ${device.name}\n`);
+  };
+
+  document.getElementById('send').onsubmit = async (e) => {
+    e.preventDefault();
+    // \r runs the line at the REPL; the echo example strips it.
+    const bytes = new TextEncoder().encode(document.getElementById('line').value + '\r\n');
+    // 20 bytes fit in one write at any MTU.
+    for (let i = 0; i < bytes.length; i += 20) await rx.writeValueWithResponse(bytes.slice(i, i + 20));
+  };
+</script>
+</body>
+</html>
