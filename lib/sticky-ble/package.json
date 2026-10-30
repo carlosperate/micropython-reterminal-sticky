@@ -1,6 +1,10 @@
 {
   "urls": [
     [
+      "sticky/app.py",
+      "github:carlosperate/micropython-reterminal-sticky/lib/sticky/sticky/app.py"
+    ],
+    [
       "sticky/ble.py",
       "github:carlosperate/micropython-reterminal-sticky/lib/sticky/sticky/ble.py"
     ]

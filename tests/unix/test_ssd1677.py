@@ -33,6 +33,11 @@ class TestSSD1677(unittest.TestCase):
         self.spi = SPI(self.cs, self.dc)
         self.panel = ssd1677.SSD1677(self.spi, self.cs, self.dc, self.rst, self.busy)
 
+    # A refresh turns the analog supply on, which power_off() and sleep() then turn off.
+    def refreshed(self):
+        self.panel.show(frame(1))
+        del self.spi.log[:]
+
     def log(self):
         return [(cmd, bytes(data)) for cmd, data in self.spi.log]
 
@@ -92,6 +97,7 @@ class TestSSD1677(unittest.TestCase):
         self.assertFalse(self.panel.busy())
 
     def test_sleep(self):
+        self.refreshed()
         self.panel.sleep()
         self.assertEqual(
             self.log(), [(0x3C, b"\x80"), (0x22, b"\x03"), (0x20, b""), (0x10, b"\x03")]
@@ -111,10 +117,48 @@ class TestSSD1677(unittest.TestCase):
         self.assertEqual(self.log()[: len(INIT)], INIT)
         self.assertEqual(self.log()[len(INIT) :][2], (0x24, new))
 
+    def test_power_off(self):
+        self.refreshed()
+        self.panel.power_off()
+        self.assertEqual(self.log(), [(0x3C, b"\x80"), (0x22, b"\x03"), (0x20, b"")])
+        # The planes stay, so the next refresh can be a partial: no reset or deep sleep.
+        del self.spi.log[:]
+        self.panel.show(frame(3), frame(5))
+        self.assertEqual(
+            self.log(), HOME + [(0x24, frame(3))] + HOME + [(0x26, frame(5))] + REFRESH
+        )
+
     def test_sleep_twice(self):
+        self.refreshed()
         self.panel.sleep()
         self.panel.sleep()
         self.assertEqual(self.spi.commands(), [0x3C, 0x22, 0x20, 0x10])
+
+    # On the unit a second power-off with the supply already off left BUSY high until a reset.
+    def test_power_off_twice(self):
+        self.refreshed()
+        self.panel.power_off()
+        self.panel.power_off()
+        self.assertEqual(self.spi.commands(), [0x3C, 0x22, 0x20])
+
+    # Cut short before the command is sent, the supply is still on: the next call sends it.
+    def test_interrupted_power_off_retried(self):
+        self.refreshed()
+        write = self.spi.write
+
+        def interrupted(buf):
+            raise KeyboardInterrupt
+
+        self.spi.write = interrupted
+        with self.assertRaises(KeyboardInterrupt):
+            self.panel.power_off()
+        self.spi.write = write
+        self.panel.power_off()
+        self.assertEqual(self.spi.commands(), [0x3C, 0x22, 0x20])
+
+    def test_sleep_without_refresh(self):
+        self.panel.sleep()
+        self.assertEqual(self.spi.commands(), [0x10])
 
     def test_wait_zero_doesnt_block(self):
         self.busy.input = script([1])
@@ -123,11 +167,13 @@ class TestSSD1677(unittest.TestCase):
 
     # draftling's power-off wait once hung; sleep goes on after 3 s.
     def test_sleep_while_busy(self):
+        self.refreshed()
         self.busy.input = script([1])
         self.panel.sleep()
         self.assertEqual(self.spi.commands(), [0x3C, 0x22, 0x20, 0x10])
 
     def test_sleep_after_stuck_power_off(self):
+        self.refreshed()
         self.busy.input = script([0, 1])
         self.panel.sleep()
         self.assertEqual(self.spi.commands()[-1], 0x10)

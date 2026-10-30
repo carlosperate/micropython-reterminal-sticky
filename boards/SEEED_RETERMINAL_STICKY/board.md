@@ -7,4 +7,7 @@ At power-up, before Python starts, the firmware latches the power on (so the boa
 battery when the button is released), enables battery charging, powers and deselects the microSD
 card, and turns off the display, touch and microphone power.
 
-This firmware has not yet been tested on a unit.
+Frozen in: a detector for the panel's controller and a driver for the SSD1677 (the SSD2677 isn't
+supported yet), a display with partial refresh, a Bluetooth LE link built on aioble, and a small
+library for scenes and animation driven over that link. Tried on a unit with an SSD1677; running
+on battery hasn't been tried yet.

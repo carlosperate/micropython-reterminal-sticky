@@ -55,6 +55,7 @@ class SSD1677:
         self._cmd = bytearray(1)
         self._buf = bytearray(_SLICE)
         self._asleep = False
+        self._powered = False
 
     def init(self):
         """Reset the controller and fill both planes white. The first show() must be full."""
@@ -63,6 +64,7 @@ class SSD1677:
         self.rst(1)
         time.sleep_ms(10)
         self._asleep = False
+        self._powered = False
         self._command(_SW_RESET)
         # BUSY may not rise in time for the first sample.
         time.sleep_ms(10)
@@ -120,17 +122,30 @@ class SSD1677:
         # Mode 2 with the analog supply left on, so a burst doesn't power-cycle it each frame.
         self._command(_UPDATE_2, b"\xfc")
         self._command(_ACTIVATE)
+        self._powered = True
+        time.sleep_ms(2)
+
+    def power_off(self):
+        """Turn the analog supply off after the refresh, keeping both planes for the next show().
+
+        Returns without waiting for the power-down (about 140 ms), as show() does for a refresh.
+        """
+        # A second power-off with the supply already off leaves BUSY high until a reset.
+        if not self._powered:
+            return
+        self._wait_capped()
+        self._command(_BORDER, b"\x80")
+        self._command(_UPDATE_2, b"\x03")
+        self._command(_ACTIVATE)
+        # Only once sent: cut short before this, the supply is still on and a retry is safe.
+        self._powered = False
         time.sleep_ms(2)
 
     def sleep(self):
         """Power down and sleep, losing both planes. The next show() wakes it, and should be full."""
         if self._asleep:
             return
-        self._wait_capped()
-        self._command(_BORDER, b"\x80")
-        self._command(_UPDATE_2, b"\x03")
-        self._command(_ACTIVATE)
-        time.sleep_ms(2)
+        self.power_off()
         self._wait_capped()
         # Set first: if cut short, the next show() resets an awake panel, which is harmless.
         self._asleep = True

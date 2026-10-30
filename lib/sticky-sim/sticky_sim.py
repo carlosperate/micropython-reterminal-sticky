@@ -1,5 +1,5 @@
 # A panel driver's stand-in on the host: it keeps what the glass would show, counts refreshes and
-# can write each one as a PBM. Host-only: sticky's manifest leaves it out of the firmware.
+# can write each one as a PBM. A package of its own, so nothing host-only sits in sticky.
 
 import asyncio
 import time
@@ -35,12 +35,15 @@ class SimPanel:
         self.glass = bytearray(b"\xff" * _PLANE)
         self.full = 0
         self.partial = 0
+        self.powered_off = 0
+        self.powered = False
         self.asleep = False
         self._until = time.ticks_ms()
         self._old = bytearray(_PLANE)
 
     def init(self):
         self.asleep = False
+        self.powered = False
         self._until = time.ticks_ms()
 
     def busy(self):
@@ -77,16 +80,24 @@ class SimPanel:
         else:
             self.partial += 1
         _refresh(self.glass, frame, old, _PLANE)
+        self.powered = True
         self._until = time.ticks_add(time.ticks_ms(), self.refresh_ms)
         if self.path:
             self.save("%s/%05d.pbm" % (self.path, self.full + self.partial))
 
-    # As the driver does: it powers down even if the refresh never ends.
-    def sleep(self):
+    # As the driver does: only a supply a refresh turned on is turned off.
+    def power_off(self):
         try:
             self.wait()
         except OSError:
             pass
+        if self.powered and not self.asleep:
+            self.powered = False
+            self.powered_off += 1
+
+    # As the driver does: it powers down even if the refresh never ends.
+    def sleep(self):
+        self.power_off()
         self.asleep = True
 
     def save(self, name):

@@ -3,7 +3,7 @@ import time
 import unittest
 
 from sticky.display import Display
-from sticky.sim import SimPanel
+from sticky_sim import SimPanel
 
 
 run = asyncio.run
@@ -13,6 +13,10 @@ class TestDisplay(unittest.TestCase):
     def setUp(self):
         self.panel = SimPanel()
         self.display = Display(self.panel, burst=3)
+
+    # Drops the display's idle task, which would otherwise keep this test's buffers alive.
+    def tearDown(self):
+        asyncio.new_event_loop()
 
     def step(self, n, full=False):
         self.display.fill_rect(10 * n, 0, 10, 10, 0)
@@ -131,6 +135,32 @@ class TestDisplay(unittest.TestCase):
         self.assertTrue(self.panel.asleep)
         self.step(2)
         self.assertEqual(self.counts(), (2, 1))
+
+    def test_idle_power_off(self):
+        self.display.idle_ms = 30
+        self.step(0)
+        run(self.pause(60))
+        self.assertEqual(self.panel.powered_off, 1)
+
+    # A refresh within the idle time keeps the supply on for the burst.
+    def test_no_power_off_mid_burst(self):
+        self.display.idle_ms = 100
+        for n in range(3):
+            self.step(n)
+            run(self.pause(20))
+        self.assertEqual(self.panel.powered_off, 0)
+        run(self.pause(150))
+        self.assertEqual(self.panel.powered_off, 1)
+
+    async def pause(self, ms):
+        await asyncio.sleep_ms(ms)
+
+    def test_power_off_after_timeout(self):
+        self.step(0)
+        self.hang()
+        with self.assertRaises(OSError):
+            run(self.display.power_off())
+        self.assertEqual(self.panel.powered_off, 1)
 
     # Nothing reached the panel, so the glass is still known.
     def test_cancelled_show_keeps_glass(self):

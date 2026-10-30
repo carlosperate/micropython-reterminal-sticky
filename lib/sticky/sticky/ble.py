@@ -69,6 +69,14 @@ class Link:
                 self.state = value
                 return value
 
+    def close(self):
+        """Turn the radio off, ending advertising and the deck's connection; for after run().
+
+        The service goes with it, so make a new Link to start again.
+        """
+        aioble.stop()
+        self._connection = None
+
     def notify(self, data):
         """Store data in `events` and notify the deck if one is connected."""
         if len(data) > MAX_LEN:

@@ -1,5 +1,5 @@
 # Counts 1 to 4 on the glass with a burst of 2 (full, partial, partial, full), sleeps, and wakes
-# to add "woke" under the count.
+# to add "woke" under the count; then checks the idle power-off turns the high voltage off.
 import asyncio
 import time
 import unittest
@@ -41,3 +41,22 @@ class TestDisplay(unittest.TestCase):
             self.assertEqual(display.partials, 0)
         finally:
             await display.sleep()
+
+    def test_idle_power_off(self):
+        try:
+            panel = reterminal_sticky.panel()
+        except NotImplementedError as e:
+            self.skipTest(str(e))
+        display = Display(panel, idle_ms=300)
+
+        async def main():
+            display.text("idle power-off", 16, 16, 0)
+            await display.show()
+            self.assertTrue(panel._powered)
+            # The refresh (about 0.56 s) plus idle_ms plus the power-down.
+            await asyncio.sleep_ms(1500)
+            self.assertFalse(panel._powered)
+            self.assertFalse(panel.busy())
+            await display.sleep()
+
+        asyncio.run(main())

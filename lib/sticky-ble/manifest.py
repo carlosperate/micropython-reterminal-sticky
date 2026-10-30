@@ -1,5 +1,5 @@
 metadata(
-    description="BLE link between a sticky programme and a page using Web Bluetooth.",
+    description="BLE link between a sticky programme and a page using Web Bluetooth, and run().",
     version="0.1.0",
 )
 
@@ -8,4 +8,4 @@ require("aioble-peripheral")
 require("aioble-server")
 
 # The source sits with the rest of sticky, as aioble's parts share one folder.
-package("sticky", files=("ble.py",), base_path="../sticky")
+package("sticky", files=("app.py", "ble.py"), base_path="../sticky")

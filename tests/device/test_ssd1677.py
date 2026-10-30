@@ -47,3 +47,20 @@ class TestSSD1677(unittest.TestCase):
         self.assertTrue(self.refresh(panel, second, first) < 10_000)
         # 0x22 FC leaves the analog supply on; the card stays on the glass.
         panel.sleep()
+
+    def test_power_off(self):
+        try:
+            panel = reterminal_sticky.panel()
+        except NotImplementedError as e:
+            self.skipTest(str(e))
+        first, second = card(3), card(4)
+        self.refresh(panel, first)
+        panel.power_off()
+        self.assertTrue(panel.busy(), "BUSY didn't rise for the power-down")
+        panel.wait()
+        # A second power-off with the supply off once left BUSY high until a reset.
+        panel.power_off()
+        self.assertFalse(panel.busy())
+        # The planes survive a power-off, so a partial still works.
+        self.assertTrue(self.refresh(panel, second, first) < 10_000)
+        panel.sleep()

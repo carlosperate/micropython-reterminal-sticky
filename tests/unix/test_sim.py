@@ -1,7 +1,7 @@
 import os
 import unittest
 
-from sticky.sim import SimPanel
+from sticky_sim import SimPanel
 
 WHITE = b"\xff" * 48000
 BLACK = bytes(48000)

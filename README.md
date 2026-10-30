@@ -6,7 +6,9 @@ an ESP32-S3R8 device with a 3.97" 800×480 e-paper panel.
 
 ## Status
 
-Not much yet: the board's basic firmware builds, no lib/modules created yet.
+Runs on a unit with the SSD1677 panel: the board definition, a panel driver with partial refresh,
+a Bluetooth LE link for Web Bluetooth pages, and scenes and animation driven over it.
+Not yet: the SSD2677 panel, touch, sensors' drivers, deep sleep.
 
 ## Getting started
 

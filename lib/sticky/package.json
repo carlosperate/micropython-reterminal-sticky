@@ -5,6 +5,10 @@
       "sticky/__init__.py"
     ],
     [
+      "sticky/anim.py",
+      "sticky/anim.py"
+    ],
+    [
       "sticky/display.py",
       "sticky/display.py"
     ]

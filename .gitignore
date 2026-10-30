@@ -13,3 +13,6 @@ __pycache__/
 
 # macOS
 .DS_Store
+
+# aioble's key store, written to the working directory: the repository under mpremote mount
+ble_secrets.json
