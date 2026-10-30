@@ -1,0 +1,15 @@
+{
+  "urls": [
+    [
+      "sticky/bleuart.py",
+      "github:carlosperate/micropython-reterminal-sticky/lib/sticky/sticky/bleuart.py"
+    ]
+  ],
+  "deps": [
+    [
+      "github:carlosperate/micropython-reterminal-sticky/lib/sticky",
+      "HEAD"
+    ]
+  ],
+  "version": "0.1.0"
+}

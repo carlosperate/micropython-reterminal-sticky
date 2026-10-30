@@ -116,3 +116,82 @@ class Panel:
         level = self.script[min(self._reads, len(self.script) - 1)]
         self._reads += 1
         return level
+
+
+class BLE:
+    """bluetooth.BLE's surface that sticky.bleuart uses; the test plays the central."""
+
+    TX = 1
+    RX = 2
+
+    def __init__(self):
+        self.handler = None
+        self.advertising = False
+        self.notified = []
+        self.disconnected = []
+        self.fail_notify = 0
+        self.config_set = {}
+        self._values = {}
+
+    def active(self, on=None):
+        return True
+
+    def config(self, *args, **kwargs):
+        self.config_set.update(kwargs)
+        if args == ("mac",):
+            return (0, b"\x00\x11\x22\x33\x69\xf2")
+
+    def gatts_register_services(self, services):
+        return ((self.TX, self.RX),)
+
+    def gatts_set_buffer(self, handle, size, append):
+        pass
+
+    # In append mode a read clears the value, as on the board.
+    def gatts_read(self, handle):
+        return self._values.pop(handle, b"")
+
+    def gatts_notify(self, conn, handle, data):
+        if self.fail_notify:
+            self.fail_notify -= 1
+            raise OSError(12)
+        self.notified.append(bytes(data))
+
+    def gap_advertise(self, interval_us, adv_data=None, resp_data=None):
+        self.advertising = interval_us is not None
+
+    def gap_disconnect(self, conn):
+        self.disconnected.append(conn)
+
+    def irq(self, handler):
+        self.handler = handler
+
+    # The central's side.
+    def connect(self, conn=7):
+        self.advertising = False
+        self.handler(1, (conn, 0, b""))
+
+    def disconnect(self, conn=7):
+        self.handler(2, (conn, 0, b""))
+
+    def write(self, data, conn=7):
+        self._values[self.RX] = data
+        self.handler(3, (conn, self.RX))
+
+    def exchange_mtu(self, mtu, conn=7):
+        self.handler(21, (conn, mtu))
+
+
+def bluetooth_module(ble):
+    """A stand-in for the bluetooth module, to put in sys.modules before importing bleuart."""
+
+    class Module:
+        @staticmethod
+        def BLE():
+            return ble
+
+        @staticmethod
+        def UUID(text):
+            return bytes(int(text.replace("-", "")[i : i + 2], 16) for i in range(0, 32, 2))
+
+    return Module

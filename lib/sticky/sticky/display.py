@@ -72,6 +72,19 @@ class Display(framebuf.FrameBuffer):
             raise
         self.panel.power_off()
 
+    def close(self):
+        """Turn the high voltage off now, without the event loop: for `with` and clean-up.
+
+        Draw and show again afterwards as usual; the next refresh turns it back on.
+        """
+        self.panel.power_off()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        self.close()
+
     async def sleep(self):
         """Power the panel down after the refresh; the image stays. The next show() is full."""
         if self._idle:

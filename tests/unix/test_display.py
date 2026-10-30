@@ -155,6 +155,16 @@ class TestDisplay(unittest.TestCase):
     async def pause(self, ms):
         await asyncio.sleep_ms(ms)
 
+    # Without the event loop, so it works in a finally or a with block after a Ctrl-C.
+    def test_close_and_with(self):
+        self.step(0)
+        self.display.close()
+        self.assertEqual(self.panel.powered_off, 1)
+        with Display(self.panel) as display:
+            display.fill(0)
+            run(display.show())
+        self.assertEqual(self.panel.powered_off, 2)
+
     def test_power_off_after_timeout(self):
         self.step(0)
         self.hang()

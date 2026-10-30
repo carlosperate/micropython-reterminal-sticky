@@ -16,3 +16,6 @@ __pycache__/
 
 # aioble's key store, written to the working directory: the repository under mpremote mount
 ble_secrets.json
+
+# The deck's programme, prototyped here; it belongs to the deck repo
+deck-app/

@@ -7,7 +7,7 @@ an ESP32-S3R8 device with a 3.97" 800×480 e-paper panel.
 ## Status
 
 Runs on a unit with the SSD1677 panel: the board definition, a panel driver with partial refresh,
-a Bluetooth LE link for Web Bluetooth pages, and scenes and animation driven over it.
+and a BLE UART (the Nordic UART Service) that can also carry the REPL.
 Not yet: the SSD2677 panel, touch, sensors' drivers, deep sleep.
 
 ## Getting started
@@ -67,8 +67,6 @@ ruff format --check
 # Formats in place, so check git diff after. Always pass paths: with none, it
 # reformats the whole MicroPython tree
 micropython/tools/codeformat.py -c 'boards/**/*.[ch]'
-# Commit messages: "path: Sentence." and a sign-off (git commit -s)
-micropython/tools/verifygitlog.py -n1
 ```
 
 ## Troubleshooting
