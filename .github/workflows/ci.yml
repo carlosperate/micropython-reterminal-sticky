@@ -1,4 +1,4 @@
-name: CI
+name: Link & test
 
 on: [push, pull_request]
 

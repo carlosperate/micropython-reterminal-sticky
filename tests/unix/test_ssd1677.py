@@ -97,6 +97,25 @@ class TestSSD1677(unittest.TestCase):
             self.log(), [(0x3C, b"\x80"), (0x22, b"\x03"), (0x20, b""), (0x10, b"\x03")]
         )
 
+    # BUSY stays high in deep sleep; show() wakes the panel with init() first.
+    def test_show_after_sleep(self):
+        self.busy.input = script([0])
+        self.panel.sleep()
+        self.busy.input = script([1])
+        self.assertFalse(self.panel.busy())
+        self.panel.wait(0)
+        del self.spi.log[:]
+        self.busy.input = script([0])
+        new = frame(7)
+        self.panel.show(new)
+        self.assertEqual(self.log()[: len(INIT)], INIT)
+        self.assertEqual(self.log()[len(INIT) :][2], (0x24, new))
+
+    def test_sleep_twice(self):
+        self.panel.sleep()
+        self.panel.sleep()
+        self.assertEqual(self.spi.commands(), [0x3C, 0x22, 0x20, 0x10])
+
     def test_wait_zero_doesnt_block(self):
         self.busy.input = script([1])
         with self.assertRaises(OSError):

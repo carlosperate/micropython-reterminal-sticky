@@ -8,7 +8,8 @@ import sys
 # A lib/ folder with a manifest.py is a package root, as in micropython-lib.
 def package_roots(path):
     roots = []
-    for name, kind, *_ in os.ilistdir(path):
+    # Listed whole: mpremote's mount keeps one listing open, so recursing mid-listing ends it.
+    for name, kind, *_ in list(os.ilistdir(path)):
         if kind == 0x4000:
             roots += package_roots(path + "/" + name)
         elif name == "manifest.py":

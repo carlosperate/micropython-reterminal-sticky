@@ -54,6 +54,7 @@ class SSD1677:
         busy.init(busy.IN, None)
         self._cmd = bytearray(1)
         self._buf = bytearray(_SLICE)
+        self._asleep = False
 
     def init(self):
         """Reset the controller and fill both planes white. The first show() must be full."""
@@ -61,6 +62,7 @@ class SSD1677:
         time.sleep_ms(10)
         self.rst(1)
         time.sleep_ms(10)
+        self._asleep = False
         self._command(_SW_RESET)
         # BUSY may not rise in time for the first sample.
         time.sleep_ms(10)
@@ -79,8 +81,9 @@ class SSD1677:
         self._command(_FILL_NEW, b"\xf7")
         self.wait()
 
+    # In deep sleep BUSY stays high, though nothing is running.
     def busy(self):
-        return self._busy() == 1
+        return not self._asleep and self._busy() == 1
 
     def wait(self, timeout_ms=None):
         start = time.ticks_ms()
@@ -100,10 +103,12 @@ class SSD1677:
         """Start a refresh to frame and return without waiting for it.
 
         old is what the glass shows now, and only pixels that differ from it change. Without it
-        every pixel is driven: a full refresh.
+        every pixel is driven: a full refresh. A sleeping panel is woken with init() first.
         """
         if len(frame) != _PLANE or old is not None and len(old) != _PLANE:
             raise ValueError("frame size")
+        if self._asleep:
+            self.init()
         self.wait()
         self._plane(_RAM_NEW, frame)
         if old is None:
@@ -118,13 +123,17 @@ class SSD1677:
         time.sleep_ms(2)
 
     def sleep(self):
-        """Power down and sleep, losing both planes. Wake with init(), then a full show()."""
+        """Power down and sleep, losing both planes. The next show() wakes it, and should be full."""
+        if self._asleep:
+            return
         self._wait_capped()
         self._command(_BORDER, b"\x80")
         self._command(_UPDATE_2, b"\x03")
         self._command(_ACTIVATE)
         time.sleep_ms(2)
         self._wait_capped()
+        # Set first: if cut short, the next show() resets an awake panel, which is harmless.
+        self._asleep = True
         self._command(_DEEP_SLEEP, b"\x03")
 
     # draftling caps these waits at 3 s, after one hung for its full 30 s: sleep goes ahead.

@@ -3,6 +3,10 @@
     [
       "sticky/__init__.py",
       "sticky/__init__.py"
+    ],
+    [
+      "sticky/display.py",
+      "sticky/display.py"
     ]
   ],
   "deps": [],
