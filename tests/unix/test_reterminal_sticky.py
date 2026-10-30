@@ -1,7 +1,7 @@
 import unittest
 
 import reterminal_sticky
-from fakes import Pin, Panel
+from fakes import I2C, Pin, Panel, word
 from reterminal_sticky import SSD1677, SSD2677
 
 
@@ -69,3 +69,24 @@ class TestDetect(unittest.TestCase):
 
     def test_undriven_busy_stays_high(self):
         self.assertEqual(self.detect(Panel(busy=(1,))), SSD2677)
+
+
+class TestPower(unittest.TestCase):
+    def test_gauge_scaled_for_r46(self):
+        # The board's gauge reads ten times high: 7500 mAh for the 750 mAh cell.
+        i2c = I2C({0x55: {0x0C: word(-300), 0x3C: word(7500)}})
+        g = reterminal_sticky.gauge(i2c)
+        self.assertEqual(g.current(), -30)
+        self.assertEqual(g.design_capacity(), 750)
+
+    def test_usb_power(self):
+        self.assertTrue(reterminal_sticky.usb_power(Pin(1)))
+        self.assertFalse(reterminal_sticky.usb_power(Pin(0)))
+
+    def test_charging_is_stat_low_on_usb(self):
+        self.assertTrue(reterminal_sticky.charging(Pin(0), Pin(1)))
+        self.assertFalse(reterminal_sticky.charging(Pin(1), Pin(1)))
+
+    def test_not_charging_off_usb(self):
+        # Off USB a low STAT can only be the low half of a fault's blink.
+        self.assertFalse(reterminal_sticky.charging(Pin(0), Pin(0)))

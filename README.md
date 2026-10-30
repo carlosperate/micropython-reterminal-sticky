@@ -7,8 +7,9 @@ an ESP32-S3R8 device with a 3.97" 800×480 e-paper panel.
 ## Status
 
 Runs on units with the SSD1677 display driver: the board definition, a panel driver with
-partial refresh, and a BLE UART (the Nordic UART Service) that can also carry the REPL.
-Not yet: the alternative SSD2677 driver, touch, sensors' drivers, deep sleep.
+partial refresh, the battery's fuel gauge, and a BLE UART (the Nordic UART Service) that can
+also carry the REPL. Not yet: the alternative SSD2677 driver, touch, the other sensors' drivers,
+deep sleep.
 
 ## Getting started
 

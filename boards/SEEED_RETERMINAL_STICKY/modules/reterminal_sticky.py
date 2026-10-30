@@ -1,6 +1,7 @@
 # Seeed reTerminal Sticky board helpers: the shared SPI bus, which display controller the panel
-# has, and its driver. Pins come from pins.csv through Pin.board. Functions that take pins import
-# machine only when they fall back to the board's, so the unix tests can pass fakes.
+# has, and its driver; the battery's gauge, USB power and charging. Pins come from pins.csv
+# through Pin.board. Functions that take pins import machine only when they fall back to the
+# board's, so the unix tests can pass fakes.
 
 import time
 from micropython import const
@@ -10,6 +11,8 @@ SSD2677 = "SSD2677"
 
 _REV = const(0x70)
 _SSD2677_REV = const(0x07)
+# R46, ten times the sense resistor TI calibrates the gauge for (docs/hardware.md).
+_SENSE_MOHM = const(100)
 
 
 def spi(baudrate=10_000_000):
@@ -118,3 +121,39 @@ def panel(baudrate=10_000_000):
     driver = ssd1677.SSD1677(bus, b.EPD_CS, b.EPD_DC, b.EPD_RST, b.EPD_BUSY)
     driver.init()
     return driver
+
+
+def gauge(i2c=None):
+    """Return the battery's BQ27220 gauge, scaled for the board's sense resistor.
+
+    Pass your I2C(0) if you have one: constructing it again rebuilds the bus.
+    """
+    import bq27220
+
+    if i2c is None:
+        from machine import I2C
+
+        i2c = I2C(0)
+    return bq27220.BQ27220(i2c, sense_mohm=_SENSE_MOHM)
+
+
+def usb_power(vbus=None):
+    """True while USB powers the board."""
+    if vbus is None:
+        from machine import Pin
+
+        vbus = Pin(Pin.board.VBUS_SENSE, Pin.IN)
+    return vbus.value() == 1
+
+
+def charging(stat=None, vbus=None):
+    """True while on USB with the charger's STAT low.
+
+    One read: on a fault STAT blinks at 1 Hz, so this can read either way then.
+    """
+    if stat is None:
+        from machine import Pin
+
+        stat = Pin(Pin.board.CHG_STAT, Pin.IN, Pin.PULL_UP)
+    # STAT is open drain, low while charging.
+    return usb_power(vbus) and stat.value() == 0

@@ -44,6 +44,21 @@ def script(levels):
     return read
 
 
+def word(value):
+    """A 16-bit register as the bus returns it, little-endian."""
+    return (value & 0xFFFF).to_bytes(2, "little")
+
+
+class I2C:
+    """Answers register reads from {addr: {register: bytes}}; it has no write methods."""
+
+    def __init__(self, memory):
+        self.memory = memory
+
+    def readfrom_mem(self, addr, register, n):
+        return bytes(self.memory[addr][register][:n])
+
+
 class SPI:
     """Logs (command, data) per DC-low byte, as a 4-wire SPI panel sees it."""
 
