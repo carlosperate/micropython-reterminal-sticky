@@ -1,7 +1,7 @@
 import unittest
 
 import reterminal_sticky
-from fakes import I2C, Pin, Panel, word
+from fakes import I2C, Pin, Panel, script, word
 from reterminal_sticky import SSD1677, SSD2677
 
 
@@ -90,3 +90,11 @@ class TestPower(unittest.TestCase):
     def test_not_charging_off_usb(self):
         # Off USB a low STAT can only be the low half of a fault's blink.
         self.assertFalse(reterminal_sticky.charging(Pin(0), Pin(0)))
+
+    def test_power_off(self):
+        hold, lock, button, edges = Pin(1), Pin(1), Pin(), []  # latch set, as board_init.c does
+        button.mode, button.input = Pin.IN, script([0, 0, 1])  # held, then released
+        lock.on_change = lambda level: level and edges.append((hold(), button()))
+        reterminal_sticky.power_off(hold, lock, button)
+        # Cleared after the release; a fake board never loses power, as on USB, so set again.
+        self.assertEqual(edges, [(0, 1), (1, 1)])

@@ -1,7 +1,7 @@
 # Seeed reTerminal Sticky board helpers: the shared SPI bus, which display controller the panel
-# has, and its driver; the battery's gauge, USB power and charging. Pins come from pins.csv
-# through Pin.board. Functions that take pins import machine only when they fall back to the
-# board's, so the unix tests can pass fakes.
+# has, and its driver; the battery's gauge, USB power, charging and power-off. Pins come from
+# pins.csv through Pin.board. Functions that take pins import machine only when they fall back to
+# the board's, so the unix tests can pass fakes.
 
 import time
 from micropython import const
@@ -157,3 +157,29 @@ def charging(stat=None, vbus=None):
         stat = Pin(Pin.board.CHG_STAT, Pin.IN, Pin.PULL_UP)
     # STAT is open drain, low while charging.
     return usb_power(vbus) and stat.value() == 0
+
+
+def power_off(hold=None, lock=None, button=None):
+    """Turn the board off on battery, once the power button is released.
+
+    Returns only if USB power kept the board on, with the latch set again for the next unplug.
+    """
+    if None in (hold, lock, button):
+        from machine import Pin
+
+        hold = hold or Pin(Pin.board.PWR_HOLD)
+        lock = lock or Pin(Pin.board.PWR_LOCK)
+        button = button or Pin(Pin.board.BTN_POWER, Pin.IN)
+    # Held, the button keeps the rail up: the board would go off at its release, mid-programme.
+    while button.value() == 0:
+        time.sleep_ms(20)
+    _latch(hold, lock, 0)
+    time.sleep_ms(500)  # the rail drops in this, unless something else holds it up
+    _latch(hold, lock, 1)
+
+
+# The latch stores PWR_HOLD on PWR_LOCK's rising edge (docs/hardware.md).
+def _latch(hold, lock, on):
+    hold.init(hold.OUT, value=on)
+    lock.init(lock.OUT, value=0)
+    lock(1)

@@ -9,5 +9,5 @@ card, and turns off the display, touch and microphone power.
 
 Frozen in: a detector for the panel's controller and a driver for the SSD1677 (the SSD2677 isn't
 supported yet), a display with partial refresh, a read-only driver for the battery's fuel gauge,
-a Bluetooth LE UART (the Nordic UART Service) that can also carry the REPL, and aioble. Tried on
-a unit with an SSD1677, on USB and on battery.
+power-off, a Bluetooth LE UART (the Nordic UART Service) that can also carry the REPL, and
+aioble. Tried on a unit with an SSD1677, on USB and on battery.
