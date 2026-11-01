@@ -7,7 +7,8 @@ import reterminal_sticky
 from machine import Timer
 
 
-def start(path="power.csv", period_ms=10_000):
+# Absolute: under mpremote mount the working folder is the host's, and the log would land there.
+def start(path="/power.csv", period_ms=10_000):
     gauge = reterminal_sticky.gauge()
 
     def log(_):

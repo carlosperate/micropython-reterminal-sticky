@@ -173,9 +173,12 @@ def power_off(hold=None, lock=None, button=None):
     # Held, the button keeps the rail up: the board would go off at its release, mid-programme.
     while button.value() == 0:
         time.sleep_ms(20)
-    _latch(hold, lock, 0)
-    time.sleep_ms(500)  # the rail drops in this, unless something else holds it up
-    _latch(hold, lock, 1)
+    # On USB a Ctrl-C here mustn't leave the latch clear: the board would die at the next unplug.
+    try:
+        _latch(hold, lock, 0)
+        time.sleep_ms(500)  # the rail drops in this, unless something else holds it up
+    finally:
+        _latch(hold, lock, 1)
 
 
 # The latch stores PWR_HOLD on PWR_LOCK's rising edge (docs/hardware.md).

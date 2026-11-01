@@ -98,3 +98,18 @@ class TestPower(unittest.TestCase):
         reterminal_sticky.power_off(hold, lock, button)
         # Cleared after the release; a fake board never loses power, as on USB, so set again.
         self.assertEqual(edges, [(0, 1), (1, 1)])
+
+    def test_interrupted_power_off_sets_the_latch_again(self):
+        hold, lock, button, edges = Pin(1), Pin(1), Pin(1), []  # the button already released
+
+        # A Ctrl-C just after the latch is cleared, on USB.
+        def edge(level):
+            if level:
+                edges.append(hold())
+                if not hold():
+                    raise KeyboardInterrupt
+
+        lock.on_change = edge
+        with self.assertRaises(KeyboardInterrupt):
+            reterminal_sticky.power_off(hold, lock, button)
+        self.assertEqual(edges, [0, 1])
