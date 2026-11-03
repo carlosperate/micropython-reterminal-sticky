@@ -11,7 +11,9 @@ HEIGHT = const(480)
 
 
 class Display(framebuf.FrameBuffer):
-    """Draw with FrameBuffer's methods, 1 for white, then await show(). panel is initialised."""
+    """Draw with FrameBuffer's methods, 1 for white, then await show(). panel is initialised.
+
+    show_grey() shows a four-grey frame drawn elsewhere instead."""
 
     def __init__(self, panel, burst=10, idle_ms=1000):
         self.panel = panel
@@ -37,14 +39,45 @@ class Display(framebuf.FrameBuffer):
         full = full or not self._known or self.partials >= self.burst
         if self._idle:
             self._idle.cancel()
-        await self.wait()
-        # Until the panel has the frame: Ctrl-C mid-transfer leaves the glass uncertain.
-        self._known = False
-        self.panel.show(self.buffer, None if full else self._glass)
-        self._glass[:] = self.buffer
-        self._known = True
-        self.partials = 0 if full else self.partials + 1
-        self._idle = asyncio.create_task(self._power_off_when_idle())
+        try:
+            await self.wait()
+            # Until the panel has the frame: Ctrl-C mid-transfer leaves the glass uncertain.
+            self._known = False
+            self.panel.show(self.buffer, None if full else self._glass)
+            self._glass[:] = self.buffer
+            self._known = True
+            self.partials = 0 if full else self.partials + 1
+        finally:
+            # Even cut short or timed out: the last refresh may have left the supply on.
+            self._idle = asyncio.create_task(self._power_off_when_idle())
+
+    async def show_grey(self, frame, clean=False):
+        """Refresh to a four-grey frame once the last refresh ends, and return without waiting.
+
+        frame is the caller's 800x480 GS2_HMSB buffer (96,000 bytes, 0 black to 3 white), read
+        only until this returns. Drawing on the display itself stays black and white. The glass
+        then holds greys, so the next show() is full.
+
+        clean first flashes the glass black, then white, with the controller's own waveform
+        (about 3.6 s): a picture held for long otherwise shows through the greys more.
+        """
+        if len(frame) != WIDTH * HEIGHT // 4:
+            raise ValueError("frame size")
+        if self._idle:
+            self._idle.cancel()
+        try:
+            await self.wait()
+            # Before the panel's RAM changes, and left so: no partial may follow the greys.
+            self._known = False
+            if clean:
+                for white in (False, True):
+                    self.panel.clean(white)
+                    await self.wait()
+            self.panel.show_grey(frame)
+        finally:
+            # The grey waveform turns the supply off itself, but one cut short before it may
+            # leave the last refresh's on. Turning off a supply that's off does nothing.
+            self._idle = asyncio.create_task(self._power_off_when_idle())
 
     # A panel left at high voltage for long is damaged; a burst keeps it on between frames.
     async def _power_off_when_idle(self):

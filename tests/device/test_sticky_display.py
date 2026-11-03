@@ -60,3 +60,32 @@ class TestDisplay(unittest.TestCase):
             await display.sleep()
 
         asyncio.run(main())
+
+    # A grey frame between two black-and-white ones: the one after it is full.
+    def test_grey(self):
+        try:
+            panel = reterminal_sticky.panel()
+        except NotImplementedError as e:
+            self.skipTest(str(e))
+        display = Display(panel)
+
+        async def main():
+            try:
+                display.text("before grey", 16, 16, 0)
+                await display.show()
+                grey = bytearray(800 * 480 // 4)
+                grey[: len(grey) // 2] = b"\x55" * (len(grey) // 2)  # top half level 1
+                grey[len(grey) // 2 :] = b"\xaa" * (len(grey) // 2)  # bottom half level 2
+                await display.show_grey(grey)
+                self.assertTrue(panel.busy())
+                await display.wait()
+                display.text("after grey", 16, 32, 0)
+                await display.show()
+                self.assertEqual(display.partials, 0)
+                display.text("partial", 16, 48, 0)
+                await display.show()
+                self.assertEqual(display.partials, 1)
+            finally:
+                await display.sleep()
+
+        asyncio.run(main())

@@ -68,3 +68,71 @@ class TestSimPanel(unittest.TestCase):
         for name in names:
             os.remove(path + "/" + name)
         os.rmdir(path)
+
+
+def grey(levels):
+    """A GS2_HMSB frame from levels(x, y), through framebuf."""
+    import framebuf
+
+    buf = bytearray(96000)
+    fb = framebuf.FrameBuffer(buf, 800, 480, framebuf.GS2_HMSB)
+    for y in range(480):
+        for x in range(800):
+            fb.pixel(x, y, levels(x, y))
+    return buf
+
+
+class TestSimGrey(unittest.TestCase):
+    # Levels 0 and 1 are dark on the black-and-white glass, 2 and 3 light.
+    def test_grey(self):
+        frame = grey(lambda x, y: x & 3)
+        panel = SimPanel()
+        panel.show(WHITE)
+        panel.show_grey(frame)
+        self.assertEqual(panel.glass, b"\x33" * 48000)
+        self.assertEqual(panel.greys, frame)
+        self.assertEqual((panel.full, panel.partial, panel.grey), (1, 0, 1))
+        self.assertFalse(panel.powered)
+
+    # As the driver: whatever old it's given, the next show() is full.
+    def test_full_after_grey(self):
+        panel = SimPanel()
+        panel.show_grey(grey(lambda x, y: 0))
+        panel.show(WHITE, WHITE)
+        self.assertEqual(panel.glass, WHITE)
+        self.assertEqual((panel.full, panel.partial), (1, 0))
+        self.assertIsNone(panel.greys)
+        panel.show(BLACK, WHITE)
+        self.assertEqual((panel.full, panel.partial), (1, 1))
+
+    def test_clean(self):
+        panel = SimPanel()
+        panel.show(BLACK)
+        panel.clean()
+        self.assertEqual(panel.glass, WHITE)
+        panel.clean(False)
+        self.assertEqual(panel.glass, BLACK)
+        self.assertEqual(panel.cleaned, 2)
+        self.assertFalse(panel.powered)
+        panel.show(WHITE, BLACK)
+        self.assertEqual((panel.full, panel.partial), (2, 0))
+
+    def test_grey_frame_size(self):
+        with self.assertRaises(ValueError):
+            SimPanel().show_grey(WHITE)
+
+    def test_pgm(self):
+        path = "/tmp/sticky-test-sim-grey"
+        try:
+            os.mkdir(path)
+        except OSError:
+            pass
+        panel = SimPanel(path)
+        panel.show_grey(grey(lambda x, y: x & 3))
+        with open(path + "/00001.pgm", "rb") as f:
+            data = f.read()
+        os.remove(path + "/00001.pgm")
+        os.rmdir(path)
+        self.assertEqual(data[:15], b"P5\n800 480\n255\n")
+        self.assertEqual(data[15:23], b"\x00\x55\xaa\xff\x00\x55\xaa\xff")
+        self.assertEqual(len(data), 15 + 800 * 480)

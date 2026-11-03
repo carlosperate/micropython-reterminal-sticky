@@ -9,7 +9,8 @@ from sticky_sim import SimPanel
 run = asyncio.run
 
 
-class TestDisplay(unittest.TestCase):
+# Fixtures only: the test classes share them without running each other's tests.
+class DisplayCase(unittest.TestCase):
     def setUp(self):
         self.panel = SimPanel()
         self.display = Display(self.panel, burst=3)
@@ -22,6 +23,31 @@ class TestDisplay(unittest.TestCase):
         self.display.fill_rect(10 * n, 0, 10, 10, 0)
         run(self.display.show(full))
 
+    # Cut short while waiting for the last refresh, which left the supply on: it still goes off.
+    def cancel_while_busy(self, call):
+        self.display.idle_ms = 50
+        self.panel.refresh_ms = 100
+
+        async def main():
+            self.display.fill_rect(500, 0, 10, 10, 0)
+            await self.display.show()
+            self.display.fill_rect(600, 0, 10, 10, 0)
+            task = asyncio.create_task(call())
+            await asyncio.sleep_ms(10)
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
+            self.assertTrue(self.panel.powered)
+            await asyncio.sleep_ms(300)
+
+        run(main())
+        self.assertFalse(self.panel.powered)
+        self.assertEqual(self.panel.powered_off, 1)
+
+
+class TestDisplay(DisplayCase):
     def counts(self):
         return self.panel.full, self.panel.partial
 
@@ -194,6 +220,9 @@ class TestDisplay(unittest.TestCase):
         run(self.display.show())
         self.assertEqual(self.counts(), (1, 2))
 
+    def test_cancelled_show_still_powers_off(self):
+        self.cancel_while_busy(self.display.show)
+
     def test_interrupted_sleep_makes_next_full(self):
         self.step(0)
         sleep = self.panel.sleep
@@ -223,3 +252,83 @@ class TestDisplay(unittest.TestCase):
         run(self.display.show())
         self.assertFalse(self.panel.asleep)
         self.assertEqual(self.counts(), (2, 0))
+
+
+class TestDisplayGrey(DisplayCase):
+    def setUp(self):
+        super().setUp()
+        self.grey = bytearray(b"\xaa" * 96000)  # every pixel level 2
+
+    def counts(self):
+        return self.panel.full, self.panel.partial, self.panel.grey
+
+    def test_full_after_grey(self):
+        self.step(0)
+        run(self.display.show_grey(self.grey))
+        self.assertEqual(self.panel.greys, self.grey)
+        self.step(1)
+        self.assertEqual(self.counts(), (2, 0, 1))
+        self.step(2)
+        self.assertEqual(self.counts(), (2, 1, 1))
+
+    # Even an unchanged buffer is shown again: the glass holds the greys.
+    def test_unchanged_buffer_after_grey(self):
+        self.step(0)
+        run(self.display.show_grey(self.grey))
+        run(self.display.show())
+        self.assertEqual(self.counts(), (2, 0, 1))
+
+    # Black, then white, with the controller's waveform, each waited for, then the greys.
+    def test_clean_first(self):
+        calls = []
+        clean, show_grey = self.panel.clean, self.panel.show_grey
+        self.panel.clean = lambda white=True: (calls.append(("clean", white)), clean(white))
+        self.panel.show_grey = lambda frame: (
+            calls.append(("grey", self.panel.busy())),
+            show_grey(frame),
+        )
+        self.panel.refresh_ms = 30
+        self.step(0)
+        run(self.display.show_grey(self.grey, clean=True))
+        self.assertEqual(calls, [("clean", False), ("clean", True), ("grey", False)])
+        self.assertEqual(self.panel.greys, self.grey)
+        run(self.display.show_grey(self.grey))
+        self.assertEqual(self.panel.cleaned, 2)  # not unless asked
+
+    def test_frame_size(self):
+        self.step(0)
+        with self.assertRaises(ValueError):
+            run(self.display.show_grey(bytearray(48000)))
+        self.assertEqual(self.panel.grey, 0)
+        self.step(1)
+        self.assertEqual(self.counts(), (1, 1, 0))
+
+    def test_cut_short_leaves_next_full(self):
+        self.step(0)
+
+        def interrupted(frame):
+            raise KeyboardInterrupt
+
+        self.panel.show_grey = interrupted
+        with self.assertRaises(KeyboardInterrupt):
+            run(self.display.show_grey(self.grey))
+        self.step(1)
+        self.assertEqual(self.counts(), (2, 0, 0))
+
+    def test_waits_for_refresh(self):
+        self.panel.refresh_ms = 50
+        self.step(0)
+        self.assertTrue(self.panel.busy())
+        run(self.display.show_grey(self.grey))
+        self.assertEqual(self.panel.grey, 1)
+
+    # Cut short before the grey refresh starts.
+    def test_cancelled_grey_still_powers_off(self):
+        self.cancel_while_busy(lambda: self.display.show_grey(self.grey))
+        self.assertEqual(self.panel.grey, 0)
+
+    # The grey waveform turns the high voltage off; the idle power-off isn't needed.
+    def test_no_power_on_after_grey(self):
+        self.step(0)
+        run(self.display.show_grey(self.grey))
+        self.assertFalse(self.panel.powered)
