@@ -1,7 +1,8 @@
 <!doctype html>
-<!-- A minimal Web Bluetooth page for the Sticky's BLE UART: connect, send a line, see replies.
-     It's also a terminal for the REPL over BLE (examples/ble_repl.py).
-     Serve it from localhost or https (Web Bluetooth needs a secure context) and open it in Chrome. -->
+<!-- A Web Bluetooth page for the Sticky's BLE UART: a terminal (send a line, see replies), and
+     checks of examples/bleuart_echo.py or of the REPL over BLE (examples/ble_repl.py).
+     Serve it from localhost (python -m http.server) or https: Web Bluetooth needs a secure
+     context. Open it in Chrome. -->
 <html>
 <head>
 <meta charset="utf-8">
@@ -10,34 +11,145 @@
 
 <body>
 <p>Open this HTML page in Chrome to use the Micropython reTerminalSticky's BLE UART service.</p>
-<button id="connect">Connect</button>
+<p>
+  <button id="connect">Connect</button>
+  <button id="run" disabled>Run checks</button>
+  with <code>examples/bleuart_echo.py</code> running, or <code>examples/ble_repl.py</code> as
+  <code>boot.py</code>.
+</p>
+<ul id="results"></ul>
 <form id="send"><input id="line" placeholder="a line to send"> <button>Send</button></form>
 <pre id="log"></pre>
 <script type="module">
   const UART = '6e400001-b5a3-f393-e0a9-e50e24dcca9e';
   const RX = '6e400002-b5a3-f393-e0a9-e50e24dcca9e';  // the board receives what we write here
   const TX = '6e400003-b5a3-f393-e0a9-e50e24dcca9e';  // and notifies what it sends here
-  const log = (text) => { document.getElementById('log').textContent += text; };
-  let rx;
+  const $ = (id) => document.getElementById(id);
+  const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+  const encoder = new TextEncoder();
+  const log = (text) => $('log').append(text);
+  let device, rx;
+  let received = '';  // what the board sent since the last ask()
+  let waiter = null;  // the pending ask(), told of each notification
 
-  document.getElementById('connect').onclick = async () => {
-    const device = await navigator.bluetooth.requestDevice({
-      filters: [{ namePrefix: 'sticky-' }], optionalServices: [UART],
-    });
+  // Again after every reconnect: a disconnect invalidates the characteristics.
+  async function setup() {
     const service = await (await device.gatt.connect()).getPrimaryService(UART);
     rx = await service.getCharacteristic(RX);
     const tx = await service.getCharacteristic(TX);
-    tx.addEventListener('characteristicvaluechanged', (e) => log(new TextDecoder().decode(e.target.value)));
+    const decoder = new TextDecoder();
+    tx.addEventListener('characteristicvaluechanged', (e) => {
+      const text = decoder.decode(e.target.value, { stream: true });
+      received += text;
+      log(text);
+      waiter?.();
+    });
     await tx.startNotifications();
-    log(`connected to ${device.name}\n`);
-  };
+  }
 
-  document.getElementById('send').onsubmit = async (e) => {
-    e.preventDefault();
-    // \r runs the line at the REPL; the echo example strips it.
-    const bytes = new TextEncoder().encode(document.getElementById('line').value + '\r\n');
+  async function send(text) {
+    const bytes = encoder.encode(text);
     // 20 bytes fit in one write at any MTU.
     for (let i = 0; i < bytes.length; i += 20) await rx.writeValueWithResponse(bytes.slice(i, i + 20));
+  }
+
+  // Sends text and waits for any of expects to come back: {match, ms} timed from the send, or
+  // null after ms.
+  async function ask(text, expects, ms = 3000) {
+    received = '';
+    const start = performance.now();
+    const answer = new Promise((resolve) => {
+      const done = (value) => {
+        clearTimeout(timer);
+        waiter = null;
+        resolve(value);
+      };
+      const timer = setTimeout(() => done(null), ms);
+      waiter = () => {
+        const match = [].concat(expects).find((e) => received.includes(e));
+        if (match) done({ match, ms: Math.round(performance.now() - start) });
+      };
+    });
+    await send(text);
+    return answer;
+  }
+
+  function result(ok, what) {
+    const item = document.createElement('li');
+    item.textContent = `${ok ? 'pass' : 'FAIL'}: ${what}`;
+    $('results').append(item);
+  }
+
+  // A bare line tells them apart: the echo example echoes it, the REPL prompts again.
+  async function detect() {
+    const answer = await ask('\r\n', ['echo: ', '>>> ']);
+    return { 'echo: ': 'echo', '>>> ': 'repl' }[answer?.match] ?? null;
+  }
+
+  async function checkEcho() {
+    const times = [];
+    for (let i = 0; i < 5; i++) {
+      // The example reads between refreshes: wait out the last one, so it isn't in the time.
+      await sleep(1000);
+      const answer = await ask(`ping ${i}\n`, `echo: ping ${i}\n`);
+      if (!answer) return result(false, `ping ${i} wasn't echoed`);
+      times.push(answer.ms);
+    }
+    result(true, `5 lines echoed, round trips ${times.join(', ')} ms`);
+    const long = 'L'.repeat(100);
+    const whole = await ask(long + '\n', `echo: ${long}\n`, 5000);
+    result(whole, 'a 100-byte line, sent as 20-byte writes, echoed whole');
+  }
+
+  async function checkRepl() {
+    result(await ask('print(6*7)\r\n', '\n42\r\n'), 'print(6*7) at the REPL answered 42');
+    // The raw REPL, as IDEs drive it: Ctrl-A, code, Ctrl-D; Ctrl-B back.
+    const raw = (await ask('\x01', 'raw REPL')) && (await ask('print(6*7)\x04', 'OK42'));
+    result(raw, 'the raw REPL answered OK42');
+    await ask('\x02', '>>> ');
+  }
+
+  async function checkReconnect(mode) {
+    device.gatt.disconnect();
+    // Straight after, connect() resolves on the closing link and the next step finds it gone.
+    await sleep(500);
+    const start = performance.now();
+    await setup();
+    const ms = Math.round(performance.now() - start);
+    result((await detect()) === mode, `dropped and reconnected in ${ms} ms, and it answers after`);
+  }
+
+  $('connect').onclick = async () => {
+    device = await navigator.bluetooth.requestDevice({
+      filters: [{ namePrefix: 'sticky-' }], optionalServices: [UART],
+    });
+    device.addEventListener('gattserverdisconnected', () => log('\n[disconnected]\n'));
+    await setup();
+    log(`connected to ${device.name}\n`);
+    $('run').disabled = false;
+  };
+
+  $('run').onclick = async () => {
+    $('run').disabled = true;
+    $('results').replaceChildren();
+    try {
+      if (!device.gatt.connected) await setup();
+      const mode = await detect();
+      if (!mode) return result(false, 'no answer: is bleuart_echo.py running, or ble_repl.py the boot.py?');
+      result(true, mode === 'echo' ? 'bleuart_echo.py answers' : 'the REPL answers');
+      await (mode === 'echo' ? checkEcho() : checkRepl());
+      await checkReconnect(mode);
+    } catch (e) {
+      result(false, e.message);
+    } finally {
+      $('run').disabled = false;
+    }
+  };
+
+  $('send').onsubmit = async (e) => {
+    e.preventDefault();
+    // \r runs the line at the REPL; the echo example strips it.
+    await send($('line').value + '\r\n');
   };
 </script>
 </body>
