@@ -1,6 +1,6 @@
 metadata(
     description="The Nordic UART Service over BLE as a stream, usable as a REPL terminal.",
-    version="0.1.0",
+    version="0.1.1",
 )
 
 require("sticky")

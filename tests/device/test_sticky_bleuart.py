@@ -1,6 +1,7 @@
 # The BLE UART on the board's radio. Connecting needs a central: the Chrome checks in
 # docs/bleuart.md cover echo, long writes, the REPL over BLE and reconnects.
 import os
+import select
 import unittest
 
 import bluetooth
@@ -8,6 +9,22 @@ from sticky.bleuart import BLEUART, repl
 
 
 class TestBLEUART(unittest.TestCase):
+    def assert_empty(self, uart):
+        self.assertEqual(uart.any(), 0)
+        self.assertIsNone(uart.read())
+        self.assertIsNone(uart.readline())
+        self.assertIsNone(uart.readinto(bytearray(8)))
+        poll = select.poll()
+        poll.register(uart, select.POLLIN)
+        self.assertEqual(poll.poll(0), [])
+
+    def test_nothing_received(self):
+        with BLEUART() as uart:
+            self.assert_empty(uart)
+        self.assert_empty(uart)
+        with BLEUART() as uart:
+            self.assert_empty(uart)
+
     def test_uart(self):
         uart = BLEUART()
         self.assertTrue(uart.name.startswith("sticky-") and len(uart.name) == 11, uart.name)

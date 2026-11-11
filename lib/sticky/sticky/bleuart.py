@@ -88,16 +88,15 @@ class BLEUART(io.IOBase):
     def any(self):
         return len(self._buf) - self._start
 
+    # read(), readinto(): the IRQ can reset _start at a branch, so none from reading to writing it.
     def read(self, n=-1):
         """The bytes waiting, at most n; None if there are none. Doesn't wait."""
-        avail = self.any()
-        if not avail:
-            return None
-        if n < 0 or n > avail:
-            n = avail
-        data = bytes(self._buf[self._start : self._start + n])
-        self._start += n
-        return data
+        if n < 0:
+            n = len(self._buf)
+        start = self._start
+        data = bytes(self._buf[start : start + n])
+        self._start = start + len(data)
+        return data or None
 
     def readline(self):
         """Up to and including the first newline, or all that's waiting; None if nothing is."""
@@ -105,12 +104,12 @@ class BLEUART(io.IOBase):
         return self.read(-1 if i < 0 else i + 1)
 
     def readinto(self, buf):
-        n = min(len(buf), self.any())
-        if not n:
-            return None
-        buf[:n] = self._buf[self._start : self._start + n]
-        self._start += n
-        return n
+        start = self._start
+        data = self._buf[start : start + len(buf)]
+        n = len(data)
+        buf[:n] = data
+        self._start = start + n
+        return n or None
 
     def write(self, buf):
         """Notify buf to the central in MTU-sized chunks; returns the bytes sent, 0 with none."""

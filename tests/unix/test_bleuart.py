@@ -3,6 +3,7 @@ import sys
 import unittest
 
 import fakes
+import micropython
 
 ble = fakes.BLE()
 sys.modules["bluetooth"] = fakes.bluetooth_module(ble)
@@ -127,6 +128,36 @@ class TestBLEUART(unittest.TestCase):
         ble.write(b"de\nf")
         self.assertEqual(self.uart.readline(), b"de\n")
         self.assertEqual(self.uart.read(), b"f")
+
+    # Every port but the ESP32 runs the BLE IRQ at branches: put a gap at each one in turn.
+    def test_gap_at_each_branch(self):
+        def gap(k):
+            if k:
+                micropython.schedule(gap, k - 1)
+            else:
+                ble.connect()
+
+        ble.connect()
+        for read in (self.uart.read, self.uart.readline, lambda: self.uart.readinto(bytearray(2))):
+            k = after = 0
+            while not after:
+                ble.write(b"abc")
+                gaps = self.uart.gaps
+                micropython.schedule(gap, k)
+                read()
+                after = self.uart.gaps == gaps
+                for _ in range(k + 1):
+                    pass
+                self.assertEqual((self.uart.gaps, self.uart.any()), (gaps + 1, 0))
+                k += 1
+
+    # A buffer that can't take the bytes raises, and they stay waiting.
+    def test_readinto_failure_keeps_data(self):
+        ble.connect()
+        ble.write(b"abc")
+        with self.assertRaises(TypeError):
+            self.uart.readinto(memoryview(b"xx"))
+        self.assertEqual(self.uart.read(), b"abc")
 
     def test_with_closes(self):
         with bleuart.BLEUART() as uart:
