@@ -40,13 +40,21 @@ class TestSimPanel(unittest.TestCase):
             panel.wait(0)
         with self.assertRaises(OSError):
             panel.wait()
-        # As the driver: sleep goes ahead.
+        # As the driver: power-off and sleep go ahead.
         panel.sleep()
-        self.assertTrue(panel.asleep)
+        self.assertEqual((panel.powered_off, panel.asleep), (1, True))
 
     def test_frame_size(self):
         with self.assertRaises(ValueError):
             SimPanel().show(bytes(100))
+
+    # As the driver: a supply already off isn't turned off again.
+    def test_power_off_twice(self):
+        panel = SimPanel()
+        panel.show(WHITE)
+        panel.power_off()
+        panel.power_off()
+        self.assertEqual(panel.powered_off, 1)
 
     def test_pbm(self):
         path = "/tmp/sticky-test-sim"
@@ -93,6 +101,8 @@ class TestSimGrey(unittest.TestCase):
         self.assertEqual(panel.greys, frame)
         self.assertEqual((panel.full, panel.partial, panel.grey), (1, 0, 1))
         self.assertFalse(panel.powered)
+        panel.power_off()  # as the driver: the grey waveform turned the supply off itself
+        self.assertEqual(panel.powered_off, 0)
 
     # As the driver: whatever old it's given, the next show() is full.
     def test_full_after_grey(self):

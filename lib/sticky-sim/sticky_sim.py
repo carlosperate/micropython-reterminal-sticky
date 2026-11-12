@@ -141,18 +141,25 @@ class SimPanel:
 
     # As the driver does: only a supply a refresh turned on is turned off.
     def power_off(self):
+        if not self.powered:
+            return
+        self._wait_capped()
+        self.powered = False
+        self.powered_off += 1
+
+    def sleep(self):
+        if self.asleep:
+            return
+        self.power_off()
+        self._wait_capped()
+        self.asleep = True
+
+    # As the driver's 3 s cap, so power-off and sleep go ahead; a shorter timeout_ms cuts it.
+    def _wait_capped(self):
         try:
-            self.wait()
+            self.wait(min(self.timeout_ms, 3000))
         except OSError:
             pass
-        if self.powered and not self.asleep:
-            self.powered = False
-            self.powered_off += 1
-
-    # As the driver does: it powers down even if the refresh never ends.
-    def sleep(self):
-        self.power_off()
-        self.asleep = True
 
     def save(self, name):
         """Write the glass as a binary PBM, where 1 is black."""

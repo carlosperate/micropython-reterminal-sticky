@@ -42,6 +42,9 @@ class PanelCase(unittest.TestCase):
     def log(self):
         return [(cmd, bytes(data)) for cmd, data in self.spi.log]
 
+    def plane(self, cmd):
+        return [data for c, data in self.log() if c == cmd][-1]
+
 
 class TestSSD1677(PanelCase):
     # A refresh turns the analog supply on, which power_off() and sleep() then turn off.
@@ -164,6 +167,29 @@ class TestSSD1677(PanelCase):
         self.panel.power_off()
         self.assertEqual(self.spi.commands(), [0x3C, 0x22, 0x20])
 
+    # Cut as 0x20 goes out, the supply may be on or off, and 0x22 03 with it off would hold BUSY:
+    # power_off() resets instead, which turns it off either way.
+    def test_cut_at_activate_resets(self):
+        write = self.spi.write
+
+        def cut(buf):
+            write(buf)
+            if not self.dc.level and buf[0] == 0x20:
+                raise KeyboardInterrupt
+
+        self.spi.write = cut
+        with self.assertRaises(KeyboardInterrupt):
+            self.panel.show(frame(1))
+        self.spi.write = write
+        del self.spi.log[:]
+        resets = []
+        self.rst.on_change = resets.append
+        self.panel.power_off()
+        self.assertEqual((resets, self.log()), ([0, 1], INIT))
+        # The refresh may not have started, so the next one is full.
+        self.panel.show(frame(3), frame(1))
+        self.assertEqual(self.plane(0x26), inverse(frame(3)))
+
     def test_sleep_without_refresh(self):
         self.panel.sleep()
         self.assertEqual(self.spi.commands(), [0x10])
@@ -223,9 +249,6 @@ def planes(fb, points=None):
 
 
 class TestGrey(PanelCase):
-    def plane(self, cmd):
-        return [data for c, data in self.log() if c == cmd][-1]
-
     # GS2_HMSB keeps the leftmost pixel in a byte's lowest two bits.
     def test_packing(self):
         buf, _ = grey_frame([(0, 0, 0), (1, 0, 1), (2, 0, 2), (3, 0, 3)])

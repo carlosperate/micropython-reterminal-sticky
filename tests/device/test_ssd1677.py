@@ -64,7 +64,9 @@ class TestSSD1677(unittest.TestCase):
         except NotImplementedError as e:
             self.skipTest(str(e))
         first, second = card(3), card(4)
-        self.refresh(panel, first)
+        # Marked on once the refresh starts, so a power-off straight after it runs.
+        panel.show(first)
+        self.assertTrue(panel._powered)
         panel.power_off()
         self.assertTrue(panel.busy(), "BUSY didn't rise for the power-down")
         panel.wait()
@@ -74,6 +76,26 @@ class TestSSD1677(unittest.TestCase):
         # The planes survive a power-off, so a partial still works.
         self.assertTrue(self.refresh(panel, second, first) < 10_000)
         panel.sleep()
+
+    # A show() cut at 0x20 leaves the supply unknown, so power_off() resets. A power-off with the
+    # supply off holds BUSY high, and one after that reset does: the reset turned it off.
+    def test_reset_turns_supply_off(self):
+        try:
+            panel = reterminal_sticky.panel()
+        except NotImplementedError as e:
+            self.skipTest(str(e))
+        try:
+            self.refresh(panel, card(5))
+            panel._powered = None
+            panel.power_off()
+            panel._powered = True
+            panel.power_off()
+            with self.assertRaises(OSError):
+                panel.wait(1000)
+            panel.init()
+            self.assertTrue(self.refresh(panel, card(6)) < 10_000)
+        finally:
+            panel.sleep()
 
     # Into grey straight after a partial, twice, then back: each grey refresh resets the
     # controller, which a second one needed on a unit, and leaves the supply off.

@@ -1,6 +1,6 @@
 metadata(
     description="A stand-in for the Sticky's panel on the unix port, for tests and previews.",
-    version="0.2.0",
+    version="0.2.1",
 )
 
 module("sticky_sim.py")

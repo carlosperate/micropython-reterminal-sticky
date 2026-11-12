@@ -77,6 +77,10 @@ class TestDisplay(unittest.TestCase):
                 grey[: len(grey) // 2] = b"\x55" * (len(grey) // 2)  # top half level 1
                 grey[len(grey) // 2 :] = b"\xaa" * (len(grey) // 2)  # bottom half level 2
                 await display.show_grey(grey)
+                # The grey waveform turns the supply off itself: close() neither waits nor cuts it.
+                start = time.ticks_ms()
+                display.close()
+                self.assertTrue(time.ticks_diff(time.ticks_ms(), start) < 50)
                 self.assertTrue(panel.busy())
                 await display.wait()
                 display.text("after grey", 16, 32, 0)

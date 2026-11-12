@@ -161,9 +161,11 @@ class SSD1677:
         self._command(_BORDER, b"\xc0")
         # Mode 2 with the analog supply left on, so a burst doesn't power-cycle it each frame.
         self._command(_UPDATE_2, b"\xfc")
+        # Unknown while 0x20 goes out: cut short here, the supply may be on or off.
+        self._powered = None
         self._command(_ACTIVATE)
-        self._stale = False
         self._powered = True
+        self._stale = False
         time.sleep_ms(2)
 
     def show_grey(self, frame):
@@ -221,9 +223,13 @@ class SSD1677:
         Returns without waiting for the power-down (about 140 ms), as show() does for a refresh.
         """
         # A second power-off with the supply already off leaves BUSY high until a reset.
-        if not self._powered:
+        if self._powered is False:
             return
         self._wait_capped()
+        # Unknown after a show() cut at 0x20: a reset turns it off whether it's on or not.
+        if self._powered is None:
+            self.init()
+            return
         self._command(_BORDER, b"\x80")
         self._command(_UPDATE_2, b"\x03")
         self._command(_ACTIVATE)
