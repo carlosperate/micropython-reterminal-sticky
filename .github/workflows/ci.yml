@@ -1,4 +1,4 @@
-name: Link & test
+name: Lint & test
 
 on: [push, pull_request]
 
@@ -10,8 +10,8 @@ jobs:
       - run: git submodule update --init micropython
       - uses: actions/setup-python@v7
         with:
-          python-version: "3.12"
-      - run: pip install --upgrade pip && pip install --group dev
+          python-version: "3.14"
+      - run: pip install --group dev
       - run: ruff check --output-format=github
       - run: ruff format --diff
       - run: micropython/tools/codeformat.py -v -c 'boards/**/*.[ch]'
@@ -23,3 +23,25 @@ jobs:
       - uses: actions/checkout@v7
       - run: make submodules
       - run: make test
+
+  buildfirmware:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - run: make submodules
+      - run: make firmware
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.14"
+      - run: pip install --upgrade pip && pip install --group dev
+      - run: esptool image-info build/SEEED_RETERMINAL_STICKY/firmware.bin > build/image-info.txt
+      # Check flash mode == DIO, size == 16 MB, built with partitions.csv (upstream's fallback lets the filesystem run past 16 MiB).
+      - run: 'grep -q "Flash mode: DIO" build/image-info.txt'
+      - run: 'grep -q "Flash size: 16MB" build/image-info.txt'
+      - run: grep -q 'CUSTOM_FILENAME=".*/boards/SEEED_RETERMINAL_STICKY/partitions.csv"' build/SEEED_RETERMINAL_STICKY/sdkconfig
+      # The build left the micropython submodule unchanged.
+      - run: "! git -C micropython status --porcelain | grep ."
+      - uses: actions/upload-artifact@v7
+        with:
+          name: firmware
+          path: build/SEEED_RETERMINAL_STICKY/firmware.bin
