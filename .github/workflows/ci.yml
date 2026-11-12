@@ -21,26 +21,29 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - run: make submodules
-      - run: make test
+      - run: python3 make.py submodules
+      - run: python3 make.py test
 
-  buildfirmware:
+  build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - run: make submodules
-      - run: make firmware
+      - run: python3 make.py submodules
+      - run: python3 make.py firmware
       - uses: actions/setup-python@v7
         with:
           python-version: "3.14"
-      - run: pip install --upgrade pip && pip install --group dev
-      - run: esptool image-info build/SEEED_RETERMINAL_STICKY/firmware.bin > build/image-info.txt
+      - run: pip install --group dev
+      - run: esptool image-info build/SEEED_RETERMINAL_STICKY/firmware.bin > "$RUNNER_TEMP/image-info.txt"
       # Check flash mode == DIO, size == 16 MB, built with partitions.csv (upstream's fallback lets the filesystem run past 16 MiB).
-      - run: 'grep -q "Flash mode: DIO" build/image-info.txt'
-      - run: 'grep -q "Flash size: 16MB" build/image-info.txt'
+      - run: 'grep -q "Flash mode: DIO" "$RUNNER_TEMP/image-info.txt"'
+      - run: 'grep -q "Flash size: 16MB" "$RUNNER_TEMP/image-info.txt"'
       - run: grep -q 'CUSTOM_FILENAME=".*/boards/SEEED_RETERMINAL_STICKY/partitions.csv"' build/SEEED_RETERMINAL_STICKY/sdkconfig
-      # The build left the micropython submodule unchanged.
-      - run: "! git -C micropython status --porcelain | grep ."
+      # The build left the micropython submodule unchanged. A failed git fails the assignment.
+      - run: |
+          status=$(git -C micropython status --porcelain)
+          echo "$status"
+          test -z "$status"
       - uses: actions/upload-artifact@v7
         with:
           name: firmware

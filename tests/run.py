@@ -1,6 +1,6 @@
 # Runs every test_*.py in one folder with micropython-lib's unittest: tests/unix on the unix port
-# (make test), tests/device on the board over mpremote mount (make test-device). Both run from the
-# repository root, so the paths below are relative to it.
+# (make.py test), tests/device on the board over mpremote mount (make.py test-device). Both run
+# from the repository root, so the paths below are relative to it.
 import os
 import sys
 

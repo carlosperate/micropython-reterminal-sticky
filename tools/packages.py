@@ -96,7 +96,7 @@ def main():
         current = open(target).read() if os.path.exists(target) else None
         if current != text:
             if args.check:
-                errors.append("{}/package.json is stale: run make packages".format(rel))
+                errors.append("{}/package.json is stale: run make.py packages".format(rel))
             else:
                 with open(target, "w") as f:
                     f.write(text)

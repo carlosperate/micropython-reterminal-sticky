@@ -19,16 +19,17 @@ cd micropython-reterminal-sticky
 pip install --group dev     # pip 25.1 or later
 ```
 
-`make submodules` fetches MicroPython, and only the internal submodules the esp32 and unix ports
-need. A recursive submodule init would fetch submodules for all the ports.
+`python make.py submodules` fetches MicroPython, and only the internal submodules the esp32 and
+unix ports need. A recursive submodule init would fetch submodules for all the ports.
 
 ## Building
 
-Builds run in Espressif's `espressif/idf:v5.5.2` Docker image, and go to `build/`:
+`make.py` needs only Python and Docker. Builds run in Espressif's `espressif/idf:v5.5.2` Docker
+image, and go to `build/`. It's written for Linux, macOS and Windows, but untested on Windows.
 
 ```sh
-make firmware     # build/SEEED_RETERMINAL_STICKY/firmware.bin
-make unix         # build/unix/micropython, x86-64 for viper (emulated on Apple silicon)
+python make.py firmware  # build/SEEED_RETERMINAL_STICKY/firmware.bin
+python make.py unix      # build/unix/micropython, x86-64 for viper (emulated on Apple silicon)
 ```
 
 Flashing runs on the host, as accessing USB devices from Docker is not simple.
@@ -54,10 +55,10 @@ esptool --chip esp32s3 --port PORT --baud 921600 write-flash 0 sticky-backup.bin
 Tests use micropython-lib's `unittest`:
 
 ```sh
-make test                   # tests/unix/ on the unix port, in Docker
-make test-device PORT=PORT  # tests/device/ on the board, running lib/ from this checkout
-make info PORT=PORT         # battery, charging and USB state
-make packages               # rewrite each lib/ package.json from its manifest.py
+python make.py test                     # tests/unix/ on the unix port, in Docker
+python make.py test-device --port PORT  # tests/device/ on the board, running lib/ from here
+python make.py info --port PORT         # battery, charging and USB state
+python make.py packages                 # rewrite each lib/ package.json from its manifest.py
 ```
 
 Checks, with the same tools and versions as MicroPython:

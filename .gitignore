@@ -8,8 +8,9 @@ __pycache__/
 *.elf
 *.uf2
 
-# Host tools
+# Host tools: pinned in pyproject.toml's dev group, so uv's lock file isn't the project's
 .venv/
+uv.lock
 
 # macOS
 .DS_Store

@@ -1,4 +1,4 @@
-# Checks the pin map and the state board_init.c leaves, so make test-device hard-resets first.
+# Checks the pin map and the state board_init.c leaves, so make.py test-device hard-resets first.
 import unittest
 
 from machine import Pin, mem32

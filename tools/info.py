@@ -1,5 +1,5 @@
-# Runs on the board (make info PORT=...) and prints its state for a person to read: these values
-# change from moment to moment, so they aren't tests.
+# Runs on the board (make.py info) and prints its state for a person to read: these values change
+# from moment to moment, so they aren't tests.
 import gc
 import time
 
