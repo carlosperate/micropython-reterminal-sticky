@@ -2,7 +2,7 @@
 import unittest
 
 import reterminal_sticky
-from machine import mem32
+from machine import Pin, mem32
 from test_pins import PINS
 
 # GPIO_FUNC0_OUT_SEL_CFG_REG and GPIO_FUNC0_IN_SEL_CFG_REG, then one word per GPIO or signal, and
@@ -39,3 +39,29 @@ class TestPanel(unittest.TestCase):
         self.assertEqual(out_signal(PINS["SPI_SCK"]), _FSPICLK_OUT)
         self.assertEqual(out_signal(PINS["SPI_MOSI"]), _FSPID_OUT)
         self.assertEqual(in_gpio(_FSPIQ_IN), PINS["SPI_MISO"])
+
+    # A controller with no driver: detection powers the panel, and panel() turns it back off
+    # once the bus is given back. Then the real panel() still works.
+    def test_panel_without_driver(self):
+        detect = reterminal_sticky.detect
+        reterminal_sticky.detect = lambda: (detect(), reterminal_sticky.SSD2677)[1]
+        try:
+            with self.assertRaises(NotImplementedError):
+                reterminal_sticky.panel()
+        finally:
+            reterminal_sticky.detect = detect
+        self.assertEqual(Pin.board.EPD_EN.value(), 0)
+        for name in ("EPD_CS", "EPD_DC", "EPD_RST"):
+            self.assertFalse("mode=Pin.OUT" in repr(getattr(Pin.board, name)), name)
+        self.assertEqual(out_signal(PINS["SPI_SCK"]), _FSPICLK_OUT)
+        self.assertEqual(out_signal(PINS["SPI_MOSI"]), _FSPID_OUT)
+        try:
+            panel = reterminal_sticky.panel()
+        except NotImplementedError as e:
+            self.skipTest(str(e))
+        try:
+            panel.show(b"\xff" * 48000)
+            self.assertTrue(panel.busy(), "BUSY didn't rise")
+            panel.wait()
+        finally:
+            panel.sleep()

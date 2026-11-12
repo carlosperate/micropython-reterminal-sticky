@@ -114,6 +114,10 @@ def panel(baudrate=10_000_000):
     # Before any raise: detect() took SCK and MOSI from the bus the SD card may be using.
     bus = spi(baudrate)
     if controller != SSD1677:
+        # Off, as board_init.c leaves it; pins driven high would feed the unpowered chip.
+        for pin in (Pin.board.EPD_CS, Pin.board.EPD_DC, Pin.board.EPD_RST):
+            pin.init(pin.IN)
+        Pin.board.EPD_EN(0)
         raise NotImplementedError("no driver for the " + controller)
     import ssd1677
 

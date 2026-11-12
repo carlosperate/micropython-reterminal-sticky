@@ -1,3 +1,4 @@
+import sys
 import unittest
 
 import reterminal_sticky
@@ -69,6 +70,46 @@ class TestDetect(unittest.TestCase):
 
     def test_undriven_busy_stays_high(self):
         self.assertEqual(self.detect(Panel(busy=(1,))), SSD2677)
+
+
+class TestPanel(unittest.TestCase):
+    # With no driver for the controller, the panel goes back off once the bus is given back.
+    def test_no_driver_turns_panel_off(self):
+        events = []
+
+        class machine:
+            class SPI:
+                def __init__(self, id, **kwargs):
+                    events.append("spi")
+
+                def deinit(self):
+                    pass
+
+                def init(self, **kwargs):
+                    pass
+
+            class Pin(Pin):
+                class board:
+                    EPD_EN, EPD_CS, EPD_DC, EPD_RST = (Pin(1) for _ in range(4))
+                    SD_EN, SD_CS, SPI_SCK, SPI_MOSI, SPI_MISO = (Pin() for _ in range(5))
+
+        b = machine.Pin.board
+        for pin in (b.EPD_EN, b.EPD_CS, b.EPD_DC, b.EPD_RST):
+            pin.init(Pin.OUT)  # as detect() leaves them
+        b.EPD_EN.on_change = lambda level: events.append(("EPD_EN", level))
+        detect, saved = reterminal_sticky.detect, sys.modules.get("machine")
+        reterminal_sticky.detect = lambda: SSD2677
+        sys.modules["machine"] = machine
+        try:
+            with self.assertRaises(NotImplementedError):
+                reterminal_sticky.panel()
+        finally:
+            reterminal_sticky.detect = detect
+            sys.modules.pop("machine")
+            if saved:
+                sys.modules["machine"] = saved
+        self.assertEqual(events, ["spi", ("EPD_EN", 0)])
+        self.assertEqual([pin.mode for pin in (b.EPD_CS, b.EPD_DC, b.EPD_RST)], [Pin.IN] * 3)
 
 
 class TestPower(unittest.TestCase):

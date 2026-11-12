@@ -185,10 +185,28 @@ class TestSSD1677(PanelCase):
         resets = []
         self.rst.on_change = resets.append
         self.panel.power_off()
-        self.assertEqual((resets, self.log()), ([0, 1], INIT))
-        # The refresh may not have started, so the next one is full.
+        self.assertEqual((resets, self.log()), ([0, 1], []))
+        # The controller needs init() again, and the next refresh is full.
         self.panel.show(frame(3), frame(1))
+        self.assertEqual(self.log()[: len(INIT)], INIT)
         self.assertEqual(self.plane(0x26), inverse(frame(3)))
+
+    # Cut inside a reset, the supply may be off already: power_off() resets again.
+    def test_cut_reset_leaves_supply_unknown(self):
+        self.panel.show(frame(1))
+
+        def cut(level):
+            if level:
+                raise KeyboardInterrupt
+
+        self.rst.on_change = cut
+        with self.assertRaises(KeyboardInterrupt):
+            self.panel.clean()
+        resets = []
+        self.rst.on_change = resets.append
+        del self.spi.log[:]
+        self.panel.power_off()
+        self.assertEqual((resets, self.log()), ([0, 1], []))
 
     def test_sleep_without_refresh(self):
         self.panel.sleep()

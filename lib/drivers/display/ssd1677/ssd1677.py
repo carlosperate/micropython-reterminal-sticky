@@ -94,12 +94,7 @@ class SSD1677:
     def init(self):
         """Reset the controller and fill both planes white. The first show() must be full."""
         self._init_pending = True
-        self.rst(0)
-        time.sleep_ms(10)
-        self.rst(1)
-        time.sleep_ms(10)
-        self._asleep = False
-        self._powered = False
+        self._reset()
         self._command(_SW_RESET)
         # BUSY may not rise in time for the first sample.
         time.sleep_ms(10)
@@ -118,6 +113,16 @@ class SSD1677:
         self._command(_FILL_NEW, b"\xf7")
         self.wait()
         self._init_pending = False
+
+    # The reset turns the analog supply off; cut short, it may or may not have.
+    def _reset(self):
+        self._powered = None
+        self.rst(0)
+        time.sleep_ms(10)
+        self.rst(1)
+        time.sleep_ms(10)
+        self._asleep = False
+        self._powered = False
 
     # In deep sleep BUSY stays high, though nothing is running.
     def busy(self):
@@ -218,7 +223,7 @@ class SSD1677:
         self.init()
 
     def power_off(self):
-        """Turn the analog supply off after the refresh, keeping both planes for the next show().
+        """Turn the analog supply off after the refresh.
 
         Returns without waiting for the power-down (about 140 ms), as show() does for a refresh.
         """
@@ -226,9 +231,10 @@ class SSD1677:
         if self._powered is False:
             return
         self._wait_capped()
-        # Unknown after a show() cut at 0x20: a reset turns it off whether it's on or not.
+        # Unknown after a cut show() or reset: a reset turns it off either way. init() can wait.
         if self._powered is None:
-            self.init()
+            self._init_pending = True
+            self._reset()
             return
         self._command(_BORDER, b"\x80")
         self._command(_UPDATE_2, b"\x03")
