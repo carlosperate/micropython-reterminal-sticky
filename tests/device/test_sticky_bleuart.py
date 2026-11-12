@@ -35,6 +35,15 @@ class TestBLEUART(unittest.TestCase):
         # close() leaves the radio to the programme.
         self.assertTrue(bluetooth.BLE().active())
 
+    # NimBLE refuses advertising data over 31 bytes, which a 27-byte name makes.
+    def test_name_limit(self):
+        with self.assertRaises(ValueError):
+            BLEUART("x" * 27)
+        with BLEUART("x" * 26) as uart:
+            self.assertEqual(uart.name, "x" * 26)
+        with BLEUART() as uart:
+            self.assertTrue(uart.name.startswith("sticky-"))
+
     def test_repl_attaches(self):
         uart = repl()
         try:

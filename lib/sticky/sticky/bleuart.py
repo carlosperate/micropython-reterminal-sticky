@@ -25,6 +25,8 @@ _MP_STREAM_POLL_WR = const(0x0004)
 _ADV_TYPE_FLAGS = const(0x01)
 _ADV_TYPE_NAME = const(0x09)
 _ADV_TYPE_UUID128 = const(0x07)
+# The advertisement's 31 bytes, less the flags field (3) and the name's header (2).
+_NAME_MAX = const(26)
 
 # Twice the largest attribute value: the IRQ empties it on every write, so it only fills when the
 # stack has cut data, which it does silently.
@@ -52,6 +54,8 @@ class BLEUART(io.IOBase):
     """
 
     def __init__(self, name=None, rxbuf=1024):
+        if name is not None and len(name.encode()) > _NAME_MAX:
+            raise ValueError("name over %d bytes" % _NAME_MAX)
         self._ble = bluetooth.BLE()
         self._ble.active(True)
         if name is None:
