@@ -68,6 +68,8 @@ def docker(*command, options=()):
         f"--workdir={WORK}",
         # Somewhere for the IDF's caches.
         "--env=HOME=/tmp",
+        # ccache's store dies with the container, so it only slows each build down.
+        "--env=IDF_CCACHE_ENABLE=0",
         # Or git refuses a checkout owned by another user.
         "--env=GIT_CONFIG_COUNT=1",
         "--env=GIT_CONFIG_KEY_0=safe.directory",
@@ -175,7 +177,10 @@ def test_device(args):
     """
     port = require_port(args)
     run("esptool", "--port", port, "chip-id", stdout=subprocess.DEVNULL)
-    run("mpremote", "connect", port, "sleep", "2", "mount", ROOT, "run", ROOT / "tests" / "run.py")
+    # mpremote's one Ctrl-C needs the REPL up (0.4 s), and must stop a main.py before it drives
+    # the pins: the badge powers the panel 2 s in.
+    tests = ["mount", ROOT, "run", ROOT / "tests" / "run.py"]
+    run("mpremote", "connect", port, "sleep", "0.5", *tests)
 
 
 def info(args):
