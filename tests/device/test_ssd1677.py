@@ -7,6 +7,7 @@ import unittest
 import framebuf
 import reterminal_sticky
 import ssd1677
+from machine import Pin
 
 
 def big_text(fb, text, x, y, scale):
@@ -94,6 +95,21 @@ class TestSSD1677(unittest.TestCase):
                 panel.wait(1000)
             panel.init()
             self.assertTrue(self.refresh(panel, card(6)) < 10_000)
+        finally:
+            panel.sleep()
+
+    # Built by hand onto a controller left asleep: unless its first refresh resets the controller,
+    # BUSY, high in deep sleep, times the refresh out.
+    def test_first_refresh_initialises(self):
+        try:
+            reterminal_sticky.panel().sleep()
+        except NotImplementedError as e:
+            self.skipTest(str(e))
+        b = Pin.board
+        bus = reterminal_sticky.spi()
+        panel = ssd1677.SSD1677(bus, b.EPD_CS, b.EPD_DC, b.EPD_RST, b.EPD_BUSY)
+        try:
+            self.assertTrue(self.refresh(panel, card(2)) < 10_000)
         finally:
             panel.sleep()
 

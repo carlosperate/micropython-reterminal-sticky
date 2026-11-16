@@ -11,7 +11,7 @@ HEIGHT = const(480)
 
 
 class Display(framebuf.FrameBuffer):
-    """Draw with FrameBuffer's methods, 1 for white, then await show(). panel is initialised.
+    """Draw with FrameBuffer's methods, 1 for white, then await show().
 
     show_grey() shows a four-grey frame drawn elsewhere instead."""
 

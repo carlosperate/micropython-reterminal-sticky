@@ -14,6 +14,12 @@ class TestSimPanel(unittest.TestCase):
         self.assertEqual(panel.glass, BLACK)
         self.assertEqual((panel.full, panel.partial), (1, 0))
 
+    # As the driver: no init() needed, and the first refresh is full whatever old is.
+    def test_first_show_is_full(self):
+        panel = SimPanel()
+        panel.show(WHITE, BLACK)
+        self.assertEqual((panel.full, panel.partial), (1, 0))
+
     # Pixels where old matches new aren't driven, even if the glass differs.
     def test_partial_trusts_old(self):
         panel = SimPanel()

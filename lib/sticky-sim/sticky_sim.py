@@ -58,7 +58,7 @@ class SimPanel:
         self.asleep = False
         self._until = time.ticks_ms()
         self._old = bytearray(_PLANE)
-        self._stale = False  # as the driver's: the next show() is full
+        self._stale = True  # as the driver's: the next show() is full, the first one too
 
     def init(self):
         self.asleep = False

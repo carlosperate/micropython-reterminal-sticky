@@ -37,7 +37,13 @@ class PanelCase(unittest.TestCase):
     def setUp(self):
         self.cs, self.dc, self.rst, self.busy = Pin(), Pin(), Pin(), Pin()
         self.spi = SPI(self.cs, self.dc)
-        self.panel = ssd1677.SSD1677(self.spi, self.cs, self.dc, self.rst, self.busy)
+        # Initialised, as reterminal_sticky.panel() returns it.
+        self.panel = self.new_panel()
+        self.panel.init()
+        del self.spi.log[:]
+
+    def new_panel(self):
+        return ssd1677.SSD1677(self.spi, self.cs, self.dc, self.rst, self.busy)
 
     def log(self):
         return [(cmd, bytes(data)) for cmd, data in self.spi.log]
@@ -68,7 +74,9 @@ class TestSSD1677(PanelCase):
             HOME + [(0x24, new)] + HOME + [(0x26, inverse(new))] + REFRESH,
         )
 
+    # The first refresh is full whatever old is, so this is the second.
     def test_partial(self):
+        self.refreshed()
         new, old = frame(3), frame(5)
         self.panel.show(new, old)
         self.assertEqual(self.log(), HOME + [(0x24, new)] + HOME + [(0x26, old)] + REFRESH)
@@ -229,6 +237,40 @@ class TestSSD1677(PanelCase):
         self.busy.input = script([0, 1])
         self.panel.sleep()
         self.assertEqual(self.spi.commands()[-1], 0x10)
+
+    # Converted planes go out in whole rows, each slice within one ESP32 SPI transaction.
+    def test_slices(self):
+        sizes = []
+        write = self.spi.write
+
+        def recording(buf):
+            if self.dc.level:
+                sizes[-1][1].append(len(buf))
+            else:
+                sizes.append((buf[0], []))
+            write(buf)
+
+        self.spi.write = recording
+        self.panel.show(frame(1))
+        self.panel.show_grey(grey_frame()[0])
+        self.panel.clean()
+        planes = [(cmd, data) for cmd, data in sizes if cmd in (0x24, 0x26)]
+        sliced = [4000] * 12
+        self.assertEqual(
+            planes, [(0x24, [48000]), (0x26, sliced)] + [(0x24, sliced), (0x26, sliced)] * 2
+        )
+
+    # Programmes that never show greys don't hold the tables.
+    def test_no_grey_tables_at_import(self):
+        import sys
+
+        saved = sys.modules.pop("ssd1677")
+        try:
+            import ssd1677 as fresh
+
+            self.assertIsNone(fresh._tables)
+        finally:
+            sys.modules["ssd1677"] = saved
 
 
 GREY_REFRESH = [(0x21, b"\x00"), (0x1A, b"\x67\x00"), (0x22, b"\xd7"), (0x20, b"")]
@@ -440,4 +482,42 @@ class TestGrey(PanelCase):
         self.busy.input = script([0])
         del self.spi.log[:]
         self.panel.show_grey(grey_frame()[0])
+        self.assertEqual(self.log()[: len(INIT)], INIT)
+
+
+# Built by hand and never initialised: the first refresh of any kind runs init(), once.
+class TestFirstRefresh(PanelCase):
+    def setUp(self):
+        super().setUp()
+        self.panel = self.new_panel()
+
+    def test_show_initialises(self):
+        new = frame(7)
+        self.panel.show(new)
+        self.assertEqual(
+            self.log(), INIT + HOME + [(0x24, new)] + HOME + [(0x26, inverse(new))] + REFRESH
+        )
+
+    # Nobody knows what the glass shows yet, so old is ignored.
+    def test_first_show_is_full(self):
+        new = frame(3)
+        self.panel.show(new, frame(5))
+        self.assertEqual(self.plane(0x26), inverse(new))
+
+    def test_grey_and_clean_initialise_once(self):
+        for call in (lambda: self.panel.show_grey(grey_frame()[0]), lambda: self.panel.clean()):
+            self.panel = self.new_panel()
+            del self.spi.log[:]
+            call()
+            self.assertEqual(self.log()[: len(INIT)], INIT)
+            self.assertEqual(self.spi.commands().count(0x12), 1)
+
+    def test_power_off_sends_nothing(self):
+        self.panel.power_off()
+        self.assertEqual(self.spi.log, [])
+
+    def test_sleep_then_show_initialises(self):
+        self.panel.sleep()
+        del self.spi.log[:]
+        self.panel.show(frame(1))
         self.assertEqual(self.log()[: len(INIT)], INIT)

@@ -12,7 +12,8 @@ WIDTH = const(800)
 HEIGHT = const(480)
 _PLANE = const(WIDTH * HEIGHT // 8)
 _GREY_FRAME = const(WIDTH * HEIGHT // 4)
-_SLICE = const(4096)
+# 40 whole rows: an ESP32 SPI transaction holds at most 4092 bytes (machine_hw_spi.c).
+_SLICE = const(4000)
 
 _DRIVER_OUTPUT = const(0x01)
 _BOOSTER = const(0x0C)
@@ -54,8 +55,15 @@ def _clear_bits(bit):
     return bytes(sum(((~b >> (2 * k + bit)) & 1) << (3 - k) for k in range(4)) for b in range(256))
 
 
-_HIGH_CLEAR = _clear_bits(1)
-_LOW_CLEAR = _clear_bits(0)
+_tables = None
+
+
+# Built at the first grey refresh, so a programme without greys never holds them.
+def _grey_tables():
+    global _tables
+    if _tables is None:
+        _tables = (_clear_bits(1), _clear_bits(0))
+    return _tables
 
 
 @micropython.viper
@@ -84,15 +92,19 @@ class SSD1677:
         self._buf = bytearray(_SLICE)
         self._asleep = False
         self._powered = False
-        # The glass may not match the planes (greys, or a transfer cut short), so the next show()
-        # drives every pixel. init() leaves it alone; only a show() that gets as far as starting
-        # its refresh clears it.
-        self._stale = False
-        # An init() cut short (reset may still be held) is run again before the next refresh.
-        self._init_pending = False
+        # The glass may not match the planes (unknown at first, greys, or a transfer cut short), so
+        # the next show() drives every pixel. init() leaves it alone; only a show() that gets as
+        # far as starting its refresh clears it.
+        self._stale = True
+        # Until an init() completes (never run, or cut short with reset maybe still held), the
+        # next refresh runs one.
+        self._init_pending = True
 
     def init(self):
-        """Reset the controller and fill both planes white. The first show() must be full."""
+        """Reset the controller and fill both planes white.
+
+        The first refresh runs it if nothing has, so only a reset of a hung panel needs it.
+        """
         self._init_pending = True
         self._reset()
         self._command(_SW_RESET)
@@ -146,8 +158,9 @@ class SSD1677:
         """Start a refresh to frame and return without waiting for it.
 
         old is what the glass shows now, and only pixels that differ from it change. Without it
-        every pixel is driven: a full refresh. It is full whatever old is after show_grey(), or a
-        show() cut short. A sleeping panel, or one whose init() was cut short, gets init() first.
+        every pixel is driven: a full refresh. The driver's first refresh is full whatever old is,
+        as is one after show_grey(), clean() or a show() cut short. Unless an init() has completed
+        since the driver was built or last slept, show() runs one first.
         """
         if len(frame) != _PLANE or old is not None and len(old) != _PLANE:
             raise ValueError("frame size")
@@ -181,10 +194,11 @@ class SSD1677:
         """
         if len(frame) != _GREY_FRAME:
             raise ValueError("frame size")
+        high, low = _grey_tables()
         self._restart()
         self._command(_BORDER, b"\x00")
-        self._converted_plane(_RAM_NEW, _grey_plane, frame, _HIGH_CLEAR)
-        self._converted_plane(_RAM_OLD, _grey_plane, frame, _LOW_CLEAR)
+        self._converted_plane(_RAM_NEW, _grey_plane, frame, high)
+        self._converted_plane(_RAM_OLD, _grey_plane, frame, low)
         self._command(_UPDATE_1, b"\x00")
         # Seeed_GFX2's and ESPHome's SSD1677 grey refresh: the forced temperature picks the OTP's
         # grey waveform, and 0x22 D7 runs it, then turns the analog supply off itself.
