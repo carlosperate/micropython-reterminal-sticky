@@ -7,10 +7,6 @@ import time
 
 import micropython
 
-WIDTH = 800
-HEIGHT = 480
-_PLANE = WIDTH * HEIGHT // 8
-_GREY_FRAME = WIDTH * HEIGHT // 4
 _GREYS = b"\x00\x55\xaa\xff"  # levels 0 to 3, as PGM values
 
 
@@ -43,11 +39,16 @@ class SimPanel:
     """The SSD1677 driver's interface. With path, each refresh is saved as path/00001.pbm on,
     a grey one as .pgm. glass is black and white; after show_grey(), greys holds the frame."""
 
-    def __init__(self, path=None, refresh_ms=0, timeout_ms=10_000):
+    def __init__(self, path=None, refresh_ms=0, timeout_ms=10_000, width=800, height=480):
+        if width <= 0 or height <= 0 or width % 8:
+            raise ValueError("size")
+        self.width = width
+        self.height = height
+        self._plane = width * height // 8
         self.path = path
         self.refresh_ms = refresh_ms
         self.timeout_ms = timeout_ms
-        self.glass = bytearray(b"\xff" * _PLANE)
+        self.glass = bytearray(b"\xff" * self._plane)
         self.full = 0
         self.partial = 0
         self.grey = 0
@@ -57,7 +58,7 @@ class SimPanel:
         self.powered = False
         self.asleep = False
         self._until = time.ticks_ms()
-        self._old = bytearray(_PLANE)
+        self._old = bytearray(self._plane)
         self._stale = True  # as the driver's: the next show() is full, the first one too
 
     def init(self):
@@ -87,7 +88,8 @@ class SimPanel:
             raise OSError("busy timeout")
 
     def show(self, frame, old=None):
-        if len(frame) != _PLANE or old is not None and len(old) != _PLANE:
+        size = self._plane
+        if len(frame) != size or old is not None and len(old) != size:
             raise ValueError("frame size")
         if self.asleep:
             self.init()
@@ -95,12 +97,12 @@ class SimPanel:
         if self._stale:
             old = None
         if old is None:
-            _invert(self._old, frame, _PLANE)
+            _invert(self._old, frame, size)
             old = self._old
             self.full += 1
         else:
             self.partial += 1
-        _refresh(self.glass, frame, old, _PLANE)
+        _refresh(self.glass, frame, old, size)
         self._stale = False
         self.greys = None
         self.powered = True
@@ -110,10 +112,10 @@ class SimPanel:
 
     # As the driver does: the waveform turns the supply off.
     def show_grey(self, frame):
-        if len(frame) != _GREY_FRAME:
+        if len(frame) != 2 * self._plane:
             raise ValueError("frame size")
         self._restart()
-        _threshold(self.glass, frame, _PLANE)
+        _threshold(self.glass, frame, self._plane)
         self.greys = bytes(frame)
         self.grey += 1
         self._until = time.ticks_add(time.ticks_ms(), self.refresh_ms)
@@ -123,7 +125,7 @@ class SimPanel:
     # As the driver does: a reset, then the glass all white or black; the next show() is full.
     def clean(self, white=True):
         self._restart()
-        self.glass[:] = (b"\xff" if white else b"\x00") * _PLANE
+        self.glass[:] = (b"\xff" if white else b"\x00") * self._plane
         self.greys = None
         self.cleaned += 1
         self._until = time.ticks_add(time.ticks_ms(), self.refresh_ms)
@@ -163,18 +165,19 @@ class SimPanel:
 
     def save(self, name):
         """Write the glass as a binary PBM, where 1 is black."""
-        _invert(self._old, self.glass, _PLANE)
+        _invert(self._old, self.glass, self._plane)
         with open(name, "wb") as f:
-            f.write(b"P4\n800 480\n")
+            f.write(("P4\n%d %d\n" % (self.width, self.height)).encode())
             f.write(self._old)
 
     def save_grey(self, name):
         """Write the last grey frame as a binary PGM."""
-        row = bytearray(WIDTH)
+        w, greys = self.width, self.greys
+        row = bytearray(w)
         with open(name, "wb") as f:
-            f.write(b"P5\n800 480\n255\n")
-            for y in range(HEIGHT):
-                for x in range(WIDTH):
-                    i = y * WIDTH + x
-                    row[x] = _GREYS[(self.greys[i >> 2] >> ((i & 3) << 1)) & 3]
+            f.write(("P5\n%d %d\n255\n" % (w, self.height)).encode())
+            for y in range(self.height):
+                for x in range(w):
+                    i = y * w + x
+                    row[x] = _GREYS[(greys[i >> 2] >> ((i & 3) << 1)) & 3]
                 f.write(row)

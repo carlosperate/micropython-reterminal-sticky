@@ -1,9 +1,11 @@
 import asyncio
+import binascii
 import unittest
 
 import framebuf
+import reterminal_sticky
 import ssd1677
-from fakes import SPI, Pin, script
+from fakes import SPI, Pin, script, word
 
 # draftling's init for the Sticky's SSD1677.
 INIT = [
@@ -22,6 +24,12 @@ INIT = [
 ]
 HOME = [(0x4E, b"\x00\x00"), (0x4F, b"\xdf\x01")]
 REFRESH = [(0x21, b"\x00"), (0x3C, b"\xc0"), (0x22, b"\xfc"), (0x20, b"")]
+CLEAN_REFRESH = [(0x21, b"\x00"), (0x22, b"\xf7"), (0x20, b"")]
+POWER_OFF = [(0x3C, b"\x80"), (0x22, b"\x03"), (0x20, b"")]
+
+
+def planes_as(new, old):
+    return HOME + [(0x24, new)] + HOME + [(0x26, old)]
 
 
 def frame(seed):
@@ -42,14 +50,32 @@ class PanelCase(unittest.TestCase):
         self.panel.init()
         del self.spi.log[:]
 
-    def new_panel(self):
-        return ssd1677.SSD1677(self.spi, self.cs, self.dc, self.rst, self.busy)
+    # The Sticky's glass, with any setting replaced.
+    def new_panel(self, **settings):
+        glass = dict(reterminal_sticky._GLASS)
+        glass.update(settings)
+        return ssd1677.SSD1677(self.spi, self.cs, self.dc, self.rst, self.busy, **glass)
 
     def log(self):
         return [(cmd, bytes(data)) for cmd, data in self.spi.log]
 
     def plane(self, cmd):
         return [data for c, data in self.log() if c == cmd][-1]
+
+    # Each plane's writes, by size, from here on.
+    def slice_sizes(self):
+        sizes = []
+        write = self.spi.write
+
+        def recording(buf):
+            if self.dc.level:
+                sizes[-1][1].append(len(buf))
+            else:
+                sizes.append((buf[0], []))
+            write(buf)
+
+        self.spi.write = recording
+        return sizes
 
 
 class TestSSD1677(PanelCase):
@@ -71,7 +97,7 @@ class TestSSD1677(PanelCase):
         self.panel.show(new)
         self.assertEqual(
             self.log(),
-            HOME + [(0x24, new)] + HOME + [(0x26, inverse(new))] + REFRESH,
+            planes_as(new, inverse(new)) + REFRESH,
         )
 
     # The first refresh is full whatever old is, so this is the second.
@@ -79,7 +105,7 @@ class TestSSD1677(PanelCase):
         self.refreshed()
         new, old = frame(3), frame(5)
         self.panel.show(new, old)
-        self.assertEqual(self.log(), HOME + [(0x24, new)] + HOME + [(0x26, old)] + REFRESH)
+        self.assertEqual(self.log(), planes_as(new, old) + REFRESH)
 
     def test_frame_size(self):
         with self.assertRaises(ValueError):
@@ -118,9 +144,7 @@ class TestSSD1677(PanelCase):
     def test_sleep(self):
         self.refreshed()
         self.panel.sleep()
-        self.assertEqual(
-            self.log(), [(0x3C, b"\x80"), (0x22, b"\x03"), (0x20, b""), (0x10, b"\x03")]
-        )
+        self.assertEqual(self.log(), POWER_OFF + [(0x10, b"\x03")])
 
     # BUSY stays high in deep sleep; show() wakes the panel with init() first.
     def test_show_after_sleep(self):
@@ -139,13 +163,11 @@ class TestSSD1677(PanelCase):
     def test_power_off(self):
         self.refreshed()
         self.panel.power_off()
-        self.assertEqual(self.log(), [(0x3C, b"\x80"), (0x22, b"\x03"), (0x20, b"")])
+        self.assertEqual(self.log(), POWER_OFF)
         # The planes stay, so the next refresh can be a partial: no reset or deep sleep.
         del self.spi.log[:]
         self.panel.show(frame(3), frame(5))
-        self.assertEqual(
-            self.log(), HOME + [(0x24, frame(3))] + HOME + [(0x26, frame(5))] + REFRESH
-        )
+        self.assertEqual(self.log(), planes_as(frame(3), frame(5)) + REFRESH)
 
     def test_sleep_twice(self):
         self.refreshed()
@@ -199,6 +221,26 @@ class TestSSD1677(PanelCase):
         self.assertEqual(self.log()[: len(INIT)], INIT)
         self.assertEqual(self.plane(0x26), inverse(frame(3)))
 
+    # Cut as power-off's 0x20 goes out, the supply may be off already: the next one resets.
+    def test_cut_power_off_resets(self):
+        self.refreshed()
+        write = self.spi.write
+
+        def cut(buf):
+            write(buf)
+            if not self.dc.level and buf[0] == 0x20:
+                raise KeyboardInterrupt
+
+        self.spi.write = cut
+        with self.assertRaises(KeyboardInterrupt):
+            self.panel.power_off()
+        self.spi.write = write
+        del self.spi.log[:]
+        resets = []
+        self.rst.on_change = resets.append
+        self.panel.power_off()
+        self.assertEqual((resets, self.log()), ([0, 1], []))
+
     # Cut inside a reset, the supply may be off already: power_off() resets again.
     def test_cut_reset_leaves_supply_unknown(self):
         self.panel.show(frame(1))
@@ -240,17 +282,7 @@ class TestSSD1677(PanelCase):
 
     # Converted planes go out in whole rows, each slice within one ESP32 SPI transaction.
     def test_slices(self):
-        sizes = []
-        write = self.spi.write
-
-        def recording(buf):
-            if self.dc.level:
-                sizes[-1][1].append(len(buf))
-            else:
-                sizes.append((buf[0], []))
-            write(buf)
-
-        self.spi.write = recording
+        sizes = self.slice_sizes()
         self.panel.show(frame(1))
         self.panel.show_grey(grey_frame()[0])
         self.panel.clean()
@@ -261,16 +293,11 @@ class TestSSD1677(PanelCase):
         )
 
     # Programmes that never show greys don't hold the tables.
-    def test_no_grey_tables_at_import(self):
-        import sys
-
-        saved = sys.modules.pop("ssd1677")
-        try:
-            import ssd1677 as fresh
-
-            self.assertIsNone(fresh._tables)
-        finally:
-            sys.modules["ssd1677"] = saved
+    def test_grey_tables_built_at_first_grey(self):
+        self.panel.show(frame(1))
+        self.assertIsNone(self.panel._tables)
+        self.panel.show_grey(grey_frame()[0])
+        self.assertIsNotNone(self.panel._tables)
 
 
 GREY_REFRESH = [(0x21, b"\x00"), (0x1A, b"\x67\x00"), (0x22, b"\xd7"), (0x20, b"")]
@@ -345,7 +372,7 @@ class TestGrey(PanelCase):
         self.assertEqual(resets, [0, 1])
         self.assertEqual(
             self.log(),
-            INIT + [(0x3C, b"\x00")] + HOME + [(0x24, new)] + HOME + [(0x26, old)] + GREY_REFRESH,
+            INIT + [(0x3C, b"\x00")] + planes_as(new, old) + GREY_REFRESH,
         )
         self.assertEqual(self.cs.level, 1)
 
@@ -456,13 +483,7 @@ class TestGrey(PanelCase):
             plane = fill * 48000
             self.assertEqual(
                 self.log(),
-                INIT
-                + [(0x3C, b"\x01")]
-                + HOME
-                + [(0x24, plane)]
-                + HOME
-                + [(0x26, plane)]
-                + [(0x21, b"\x00"), (0x22, b"\xf7"), (0x20, b"")],
+                INIT + [(0x3C, b"\x01")] + planes_as(plane, plane) + CLEAN_REFRESH,
             )
 
     def test_clean_then_full_and_no_power_off(self):
@@ -494,9 +515,7 @@ class TestFirstRefresh(PanelCase):
     def test_show_initialises(self):
         new = frame(7)
         self.panel.show(new)
-        self.assertEqual(
-            self.log(), INIT + HOME + [(0x24, new)] + HOME + [(0x26, inverse(new))] + REFRESH
-        )
+        self.assertEqual(self.log(), INIT + planes_as(new, inverse(new)) + REFRESH)
 
     # Nobody knows what the glass shows yet, so old is ignored.
     def test_first_show_is_full(self):
@@ -521,3 +540,165 @@ class TestFirstRefresh(PanelCase):
         del self.spi.log[:]
         self.panel.show(frame(1))
         self.assertEqual(self.log()[: len(INIT)], INIT)
+
+
+# Every byte the Sticky's settings send, planes as (length, CRC-32): init, a full and a partial
+# refresh, power-off, grey, clean, a full refresh after it, and sleep.
+STICKY_BYTES = (
+    INIT
+    + planes_as((48000, 230095691), (48000, 3809137738))
+    + REFRESH
+    + planes_as((48000, 113370961), (48000, 230095691))
+    + REFRESH
+    + POWER_OFF
+    + INIT
+    + [(0x3C, b"\x00")]
+    + planes_as((48000, 3759742560), (48000, 2012162748))
+    + GREY_REFRESH
+    + INIT
+    + [(0x3C, b"\x01")]
+    + planes_as((48000, 178886727), (48000, 178886727))
+    + CLEAN_REFRESH
+    + planes_as((48000, 230095691), (48000, 3809137738))
+    + REFRESH
+    + POWER_OFF
+    + [(0x10, b"\x03")]
+)
+
+
+class TestStickyBytes(PanelCase):
+    def test_bytes(self):
+        panel = self.panel
+        panel.init()
+        panel.show(frame(7))
+        panel.show(frame(3), frame(7))
+        panel.power_off()
+        panel.show_grey(bytes((i * 5) & 0xFF for i in range(96000)))
+        panel.clean(False)
+        panel.show(frame(7), frame(3))
+        panel.power_off()
+        panel.sleep()
+        log = [(c, d if len(d) <= 8 else (len(d), binascii.crc32(d))) for c, d in self.log()]
+        self.assertEqual(log, STICKY_BYTES)
+
+
+GREY = reterminal_sticky._GLASS["grey"]
+
+
+class TestSettings(PanelCase):
+    def small(self, **settings):
+        return self.new_panel(width=400, height=300, **settings)
+
+    # The last value each command was sent with.
+    def sent(self):
+        return dict(self.log())
+
+    def test_size(self):
+        self.assertEqual((self.panel.width, self.panel.height), (800, 480))
+        panel = self.small()
+        self.assertEqual((panel.width, panel.height), (400, 300))
+        panel.init()
+        self.assertEqual(self.sent()[0x01], word(299) + b"\x02")
+
+    # 50 bytes a row: 81 rows fit a transaction, and the last slice is short.
+    def test_small_slices(self):
+        panel = self.small()
+        sizes = self.slice_sizes()
+        panel.show(bytes(15000))
+        self.assertEqual([n for cmd, n in sizes if cmd == 0x26], [[4050, 4050, 4050, 2850]])
+
+    def test_frame_sizes(self):
+        panel = self.small()
+        for call in (
+            lambda: panel.show(frame(1)),
+            lambda: panel.show(bytes(15000), frame(1)),
+            lambda: panel.show_grey(bytes(96000)),
+        ):
+            with self.assertRaises(ValueError):
+                call()
+        self.assertEqual(self.spi.log, [])
+
+    # Rows are whole bytes, and neither side is empty.
+    def test_size_checked(self):
+        for width, height in ((404, 480), (0, 480), (800, 0)):
+            with self.assertRaises(ValueError):
+                self.new_panel(width=width, height=height)
+
+    def test_row_wider_than_transaction(self):
+        panel = self.new_panel(width=32768, height=1)
+        sizes = self.slice_sizes()
+        panel.show(bytes(4096))
+        self.assertEqual([n for cmd, n in sizes if cmd == 0x26], [[4096]])
+
+    def test_settings_required(self):
+        with self.assertRaises(TypeError):
+            ssd1677.SSD1677(self.spi, self.cs, self.dc, self.rst, self.busy, 800, 480)
+
+    # Bits 0 and 1 count X and Y up; a direction counting down starts at the far end.
+    def test_data_entry(self):
+        for mode, x, y in (
+            (0x00, (399, 0), (299, 0)),
+            (0x01, (0, 399), (299, 0)),
+            (0x02, (399, 0), (0, 299)),
+            (0x03, (0, 399), (0, 299)),
+        ):
+            del self.spi.log[:]
+            self.small(data_entry=mode).init()
+            sent = self.sent()
+            self.assertEqual(sent[0x11], bytes((mode,)))
+            self.assertEqual(
+                (sent[0x44], sent[0x45]), (word(x[0]) + word(x[1]), word(y[0]) + word(y[1]))
+            )
+            self.assertEqual((sent[0x4E], sent[0x4F]), (word(x[0]), word(y[0])))
+
+    # Bit 2 addresses along Y first, and frames go row by row.
+    def test_data_entry_by_rows(self):
+        with self.assertRaises(ValueError):
+            self.new_panel(data_entry=0x05)
+
+    # 0x1C runs a waveform without turning the clock and analog supply on; 0x01 never turns it off.
+    def test_updates_checked(self):
+        for settings in (
+            {"refresh": (0xC0, 0x1C)},
+            {"clean": (0x01, 0x1C)},
+            {"grey": (0x00, 0x1C) + GREY[2:]},
+            {"power_off": (0x80, 0x01)},
+        ):
+            with self.assertRaises(ValueError):
+                self.new_panel(**settings)
+
+    # The supply is off after init(); 0xFC leaves it on, so each refresh needs a power-off.
+    def test_refresh_leaving_supply_on(self):
+        self.panel.power_off()
+        self.assertEqual(self.spi.log, [])
+        for old in (None, frame(1)):
+            self.panel.show(frame(3), old)
+            del self.spi.log[:]
+            self.panel.power_off()
+            self.assertEqual(self.log(), POWER_OFF)
+
+    def test_refresh_turning_supply_off(self):
+        panel = self.new_panel(refresh=(0xC0, 0xFF))
+        panel.show(frame(1))
+        del self.spi.log[:]
+        panel.power_off()
+        self.assertEqual(self.spi.log, [])
+
+    def test_no_grey(self):
+        panel = self.new_panel(grey=None)
+        with self.assertRaises(NotImplementedError):
+            panel.show_grey(grey_frame()[0])
+        self.assertEqual(self.spi.log, [])
+
+    # A frame all at one level gives that level's bits in each plane; swapped levels swap them.
+    def test_levels(self):
+        levels = GREY[3]
+        swapped = (levels[1], levels[0]) + levels[2:]
+        for levels in (levels, swapped):
+            panel = self.new_panel(grey=GREY[:3] + (levels,))
+            for level in range(4):
+                del self.spi.log[:]
+                panel.show_grey(bytes((0x55 * level,)) * 96000)
+                high, low = levels[level]
+                self.assertEqual(self.plane(0x24), bytes((0xFF * high,)) * 48000)
+                self.assertEqual(self.plane(0x26), bytes((0xFF * low,)) * 48000)

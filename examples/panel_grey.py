@@ -7,8 +7,9 @@ from sticky.display import Display
 
 
 async def main(display):
-    grey = bytearray(800 * 480 // 4)
-    fb = framebuf.FrameBuffer(grey, 800, 480, framebuf.GS2_HMSB)
+    w, h = display.width, display.height
+    grey = bytearray(w * h // 4)
+    fb = framebuf.FrameBuffer(grey, w, h, framebuf.GS2_HMSB)
     fb.fill(3)  # 0 is black, 3 white
     fb.text("four greys", 40, 60, 0)
     for level in range(4):

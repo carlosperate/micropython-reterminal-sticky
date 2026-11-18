@@ -1,19 +1,15 @@
-# SSD1677 e-paper controller driving 800x480 glass, as on the Seeed reTerminal Sticky. Every
-# refresh is draftling's differential one (0x22 FC), which ghosts least on a Sticky; a full
-# refresh is the same waveform with every pixel marked as changed. show_grey() uses the
-# controller's own four-grey waveform instead.
+# SSD1677 e-paper controller. The glass's size and settings come from the caller, as each glass
+# wants its own. A full refresh is show()'s waveform with every pixel marked as changed;
+# show_grey() and clean() use the controller's own waveforms.
 
 import time
 
 import micropython
 from micropython import const
 
-WIDTH = const(800)
-HEIGHT = const(480)
-_PLANE = const(WIDTH * HEIGHT // 8)
-_GREY_FRAME = const(WIDTH * HEIGHT // 4)
-# 40 whole rows: an ESP32 SPI transaction holds at most 4092 bytes (machine_hw_spi.c).
-_SLICE = const(4000)
+# An ESP32 SPI transaction holds at most 4092 bytes (machine_hw_spi.c): slices are whole rows
+# under it, so each goes out in one.
+_TRANSACTION = const(4092)
 
 _DRIVER_OUTPUT = const(0x01)
 _BOOSTER = const(0x0C)
@@ -48,22 +44,21 @@ def _fill(dst: ptr8, value: int, start: int, n: int):
         dst[i] = value
 
 
-# Grey planes in Seeed_GFX2's encoding (level 0 black to 3 white): RAM 0x24 has a 1 where the
-# level's high bit is clear (0 or 1), RAM 0x26 where its low bit is (0 or 2). GS2_HMSB keeps a
-# byte's leftmost pixel in its lowest two bits; MONO_HLSB, in bit 7; a table's nibble, in bit 3.
-def _clear_bits(bit):
-    return bytes(sum(((~b >> (2 * k + bit)) & 1) << (3 - k) for k in range(4)) for b in range(256))
+# A GS2_HMSB byte's four pixels as one plane's nibble. GS2_HMSB keeps the leftmost pixel in its
+# lowest two bits; MONO_HLSB, in bit 7; the nibble, in bit 3.
+def _grey_table(levels, plane):
+    bits = [level[plane] for level in levels]
+    table = bytearray(256)
+    for b in range(256):
+        for k in range(4):
+            table[b] |= bits[(b >> 2 * k) & 3] << (3 - k)
+    return table
 
 
-_tables = None
-
-
-# Built at the first grey refresh, so a programme without greys never holds them.
-def _grey_tables():
-    global _tables
-    if _tables is None:
-        _tables = (_clear_bits(1), _clear_bits(0))
-    return _tables
+# A window's first and last address: a direction counting down starts at the end.
+def _span(up, size):
+    first, last = (0, size - 1) if up else (size - 1, 0)
+    return bytes((first & 0xFF, first >> 8, last & 0xFF, last >> 8))
 
 
 @micropython.viper
@@ -74,10 +69,66 @@ def _grey_plane(dst: ptr8, src: ptr8, start: int, n: int, table: ptr8):
 
 
 class SSD1677:
-    """Frames are 800x480 MONO_HLSB buffers of 48,000 bytes, with 1 for white. Grey frames are
-    800x480 GS2_HMSB buffers of 96,000 bytes, 0 black to 3 white."""
+    """Frames are MONO_HLSB, width * height // 8 bytes, with 1 for white. Grey frames are
+    GS2_HMSB, twice that, 0 black to 3 white.
 
-    def __init__(self, spi, cs, dc, rst, busy, timeout_ms=10_000):
+    The glass's settings: data_entry is sent with 0x11 (bits 0 and 1 only). refresh, clean and
+    power_off are (border, update) pairs, sent with 0x3C and 0x22, for show(), clean() and
+    power_off(). booster is 0x0C's data. grey is (border, update, temperature, levels) for
+    show_grey(): temperature is sent with 0x1A, and levels gives each grey level's bits in RAM
+    0x24 and 0x26. gate_scan is 0x01's last byte and temp_sensor 0x18's.
+    """
+
+    def __init__(
+        self,
+        spi,
+        cs,
+        dc,
+        rst,
+        busy,
+        width,
+        height,
+        *,
+        data_entry,
+        refresh,
+        clean,
+        power_off,
+        booster,
+        grey=None,
+        gate_scan=0x02,
+        temp_sensor=0x80,
+        timeout_ms=10_000,
+    ):
+        if width <= 0 or height <= 0 or width % 8:
+            raise ValueError("size")
+        # Bit 2 addresses along Y first; frames go row by row.
+        if data_entry & ~3:
+            raise ValueError("data_entry")
+        # Each refresh must turn the clock and analog supply on, or it runs unpowered.
+        for setting in (refresh, clean, grey or refresh):
+            if setting[1] & 0xC0 != 0xC0:
+                raise ValueError("update")
+        if not power_off[1] & 0x02:
+            raise ValueError("power_off")
+        self.width = width
+        self.height = height
+        self._plane_size = width * height // 8
+        # A row wider than a transaction still goes out whole: the port splits it.
+        rows = max(1, _TRANSACTION // (width // 8))
+        self._data_entry = data_entry
+        self._refresh = refresh
+        self._clean = clean
+        self._power_off = power_off
+        self._grey = grey
+        self._tables = None
+        gates = height - 1
+        self._driver_output = bytes((gates & 0xFF, gates >> 8, gate_scan))
+        self._booster = booster
+        self._temp_sensor = temp_sensor
+        self._x = _span(data_entry & 1, width)
+        self._y = _span(data_entry & 2, height)
+        self._home_x = self._x[:2]
+        self._home_y = self._y[:2]
         self.spi = spi
         self.cs = cs
         self.dc = dc
@@ -89,7 +140,8 @@ class SSD1677:
         rst.init(rst.OUT, value=1)
         busy.init(busy.IN, None)
         self._cmd = bytearray(1)
-        self._buf = bytearray(_SLICE)
+        self._arg = bytearray(1)
+        self._buf = bytearray(min(rows * width // 8, self._plane_size))
         self._asleep = False
         self._powered = False
         # The glass may not match the planes (unknown at first, greys, or a transfer cut short), so
@@ -103,7 +155,8 @@ class SSD1677:
     def init(self):
         """Reset the controller and fill both planes white.
 
-        The first refresh runs it if nothing has, so only a reset of a hung panel needs it.
+        The first refresh runs it if nothing has. Call it to set the panel up early, or to reset
+        a hung one.
         """
         self._init_pending = True
         self._reset()
@@ -111,14 +164,13 @@ class SSD1677:
         # BUSY may not rise in time for the first sample.
         time.sleep_ms(10)
         self.wait()
-        self._command(_TEMP_SENSOR, b"\x80")
-        self._command(_BOOSTER, b"\xae\xc7\xc3\xc0\x80")
-        self._command(_DRIVER_OUTPUT, b"\xdf\x01\x02")
-        self._command(_BORDER, b"\x80")
-        # The glass's gates run bottom to top, so rows count down from the last one.
-        self._command(_DATA_ENTRY, b"\x01")
-        self._command(_X_WINDOW, b"\x00\x00\x1f\x03")
-        self._command(_Y_WINDOW, b"\xdf\x01\x00\x00")
+        self._command_byte(_TEMP_SENSOR, self._temp_sensor)
+        self._command(_BOOSTER, self._booster)
+        self._command(_DRIVER_OUTPUT, self._driver_output)
+        self._command_byte(_BORDER, self._power_off[0])
+        self._command_byte(_DATA_ENTRY, self._data_entry)
+        self._command(_X_WINDOW, self._x)
+        self._command(_Y_WINDOW, self._y)
         self._home()
         self._command(_FILL_OLD, b"\xf7")
         self.wait()
@@ -162,7 +214,8 @@ class SSD1677:
         as is one after show_grey(), clean() or a show() cut short. Unless an init() has completed
         since the driver was built or last slept, show() runs one first.
         """
-        if len(frame) != _PLANE or old is not None and len(old) != _PLANE:
+        size = self._plane_size
+        if len(frame) != size or old is not None and len(old) != size:
             raise ValueError("frame size")
         if self._asleep or self._init_pending:
             self.init()
@@ -176,54 +229,61 @@ class SSD1677:
         else:
             self._plane(_RAM_OLD, old)
         self._command(_UPDATE_1, b"\x00")
-        self._command(_BORDER, b"\xc0")
-        # Mode 2 with the analog supply left on, so a burst doesn't power-cycle it each frame.
-        self._command(_UPDATE_2, b"\xfc")
-        # Unknown while 0x20 goes out: cut short here, the supply may be on or off.
-        self._powered = None
-        self._command(_ACTIVATE)
-        self._powered = True
+        border, update = self._refresh
+        self._command_byte(_BORDER, border)
+        self._activate(update)
         self._stale = False
-        time.sleep_ms(2)
 
     def show_grey(self, frame):
-        """Start a four-grey refresh to frame (about 1.2 s) and return without waiting for it.
+        """Start a four-grey refresh to frame and return without waiting for it.
 
-        frame is an 800x480 GS2_HMSB buffer, read only during the call. The controller is reset
-        first. A partial can't clear greys, so the next show() is full whatever old it's given.
+        frame is read only during the call. The controller is reset first. A partial can't clear
+        greys, so the next show() is full whatever old it's given. Without grey settings it
+        raises NotImplementedError.
         """
-        if len(frame) != _GREY_FRAME:
+        if self._grey is None:
+            raise NotImplementedError("no grey settings")
+        if len(frame) != 2 * self._plane_size:
             raise ValueError("frame size")
-        high, low = _grey_tables()
+        border, update, temperature, levels = self._grey
+        # Built at the first grey refresh, so a programme without greys never holds them.
+        if self._tables is None:
+            self._tables = (_grey_table(levels, 0), _grey_table(levels, 1))
+        high, low = self._tables
         self._restart()
-        self._command(_BORDER, b"\x00")
+        self._command_byte(_BORDER, border)
         self._converted_plane(_RAM_NEW, _grey_plane, frame, high)
         self._converted_plane(_RAM_OLD, _grey_plane, frame, low)
         self._command(_UPDATE_1, b"\x00")
-        # Seeed_GFX2's and ESPHome's SSD1677 grey refresh: the forced temperature picks the OTP's
-        # grey waveform, and 0x22 D7 runs it, then turns the analog supply off itself.
-        self._command(_TEMP_WRITE, b"\x67\x00")
-        self._command(_UPDATE_2, b"\xd7")
-        self._command(_ACTIVATE)
-        time.sleep_ms(2)
+        # The forced temperature picks the OTP's grey waveform.
+        self._command(_TEMP_WRITE, temperature)
+        self._activate(update)
 
     def clean(self, white=True):
         """Start a full refresh to all white (or black) with the controller's own waveform, and
-        return without waiting for it (about 1.8 s).
+        return without waiting for it.
 
         It flashes, but drives the glass harder than show(): black then white before show_grey()
         weakens what a long-held picture leaves showing through greys. The next show() is full.
         """
         self._restart()
-        self._command(_BORDER, b"\x01")
+        border, update = self._clean
+        self._command_byte(_BORDER, border)
         fill = 0xFF if white else 0x00
         self._converted_plane(_RAM_NEW, _fill, fill)
         self._converted_plane(_RAM_OLD, _fill, fill)
         self._command(_UPDATE_1, b"\x00")
-        # Seeed_GFX2's and GxEPD2's full refresh: the OTP's full waveform, which then turns the
-        # analog supply off itself.
-        self._command(_UPDATE_2, b"\xf7")
+        self._activate(update)
+
+    # An update with bit 1 leaves the supply off; the constructor checks every other turns it on.
+    def _activate(self, update):
+        self._command_byte(_UPDATE_2, update)
+        after = not update & 0x02
+        # Unknown while 0x20 goes out, unless it ends as it started.
+        if self._powered is not after:
+            self._powered = None
         self._command(_ACTIVATE)
+        self._powered = after
         time.sleep_ms(2)
 
     # Another waveform needs the controller reset first, as Seeed's driver does between modes: on
@@ -250,12 +310,9 @@ class SSD1677:
             self._init_pending = True
             self._reset()
             return
-        self._command(_BORDER, b"\x80")
-        self._command(_UPDATE_2, b"\x03")
-        self._command(_ACTIVATE)
-        # Only once sent: cut short before this, the supply is still on and a retry is safe.
-        self._powered = False
-        time.sleep_ms(2)
+        border, update = self._power_off
+        self._command_byte(_BORDER, border)
+        self._activate(update)
 
     def sleep(self):
         """Power down and sleep, losing both planes. The next show() wakes it, and should be full."""
@@ -296,9 +353,13 @@ class SSD1677:
         finally:
             self.cs(1)
 
+    def _command_byte(self, cmd, value):
+        self._arg[0] = value
+        self._command(cmd, self._arg)
+
     def _home(self):
-        self._command(_X_COUNTER, b"\x00\x00")
-        self._command(_Y_COUNTER, b"\xdf\x01")
+        self._command(_X_COUNTER, self._home_x)
+        self._command(_Y_COUNTER, self._home_y)
 
     def _plane(self, cmd, frame):
         self._home()
@@ -308,11 +369,13 @@ class SSD1677:
     def _converted_plane(self, cmd, convert, src, *args):
         self._home()
         buf = self._buf
+        size = self._plane_size
+        step = len(buf)
         try:
             self._begin(cmd)
-            for start in range(0, _PLANE, _SLICE):
-                n = min(_SLICE, _PLANE - start)
+            for start in range(0, size, step):
+                n = min(step, size - start)
                 convert(buf, src, start, n, *args)
-                self.spi.write(buf if n == _SLICE else memoryview(buf)[:n])
+                self.spi.write(buf if n == step else memoryview(buf)[:n])
         finally:
             self.cs(1)

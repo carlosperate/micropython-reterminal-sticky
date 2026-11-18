@@ -7,7 +7,7 @@ from sticky.display import Display
 
 async def main(display):
     display.fill(1)  # 1 is white
-    display.rect(0, 0, 800, 480, 0)
+    display.rect(0, 0, display.width, display.height, 0)
     display.text("reTerminal Sticky", 24, 24, 0)
     display.ellipse(400, 240, 120, 120, 0, True)
     await display.show()  # the first refresh is full

@@ -2,7 +2,8 @@ import asyncio
 import time
 import unittest
 
-from sticky.display import Display
+import reterminal_sticky
+from sticky.display import HEIGHT, WIDTH, Display
 from sticky_sim import SimPanel
 
 
@@ -53,6 +54,20 @@ class TestDisplay(DisplayCase):
 
     def test_starts_white(self):
         self.assertEqual(self.display.buffer, b"\xff" * 48000)
+
+    # WIDTH and HEIGHT, for buffers made before a display, are the Sticky's glass.
+    def test_size_from_panel(self):
+        glass = reterminal_sticky._GLASS
+        self.assertEqual((WIDTH, HEIGHT), (glass["width"], glass["height"]))
+        self.assertEqual((self.display.width, self.display.height), (WIDTH, HEIGHT))
+        display = Display(SimPanel(width=400, height=300))
+        self.assertEqual((display.width, display.height), (400, 300))
+        self.assertEqual(len(display.buffer), 15000)
+        display.fill_rect(392, 296, 8, 4, 0)
+        run(display.show())
+        self.assertEqual(display.panel.glass[-1], 0)
+        with self.assertRaises(ValueError):
+            run(display.show_grey(bytes(96000)))
 
     def test_burst(self):
         seen = []

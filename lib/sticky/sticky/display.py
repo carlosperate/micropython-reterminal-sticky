@@ -6,6 +6,7 @@ import asyncio
 import framebuf
 from micropython import const
 
+# The Sticky's, for buffers sized before a display exists; a Display takes its panel's.
 WIDTH = const(800)
 HEIGHT = const(480)
 
@@ -17,14 +18,16 @@ class Display(framebuf.FrameBuffer):
 
     def __init__(self, panel, burst=10, idle_ms=1000):
         self.panel = panel
+        self.width = panel.width
+        self.height = panel.height
         self.burst = burst
         self.idle_ms = idle_ms
         self.partials = 0
         self._idle = None
-        self.buffer = bytearray(WIDTH * HEIGHT // 8)
+        self.buffer = bytearray(self.width * self.height // 8)
         self._glass = bytearray(len(self.buffer))
         self._known = False  # whether _glass is what the glass shows
-        super().__init__(self.buffer, WIDTH, HEIGHT, framebuf.MONO_HLSB)
+        super().__init__(self.buffer, self.width, self.height, framebuf.MONO_HLSB)
         self.fill(1)
 
     async def show(self, full=False):
@@ -54,14 +57,14 @@ class Display(framebuf.FrameBuffer):
     async def show_grey(self, frame, clean=False):
         """Refresh to a four-grey frame once the last refresh ends, and return without waiting.
 
-        frame is the caller's 800x480 GS2_HMSB buffer (96,000 bytes, 0 black to 3 white), read
-        only until this returns. Drawing on the display itself stays black and white. The glass
-        then holds greys, so the next show() is full.
+        frame is the caller's GS2_HMSB buffer at the display's size (width * height // 4 bytes,
+        0 black to 3 white), read only until this returns. Drawing on the display itself stays
+        black and white. The glass then holds greys, so the next show() is full.
 
         clean first flashes the glass black, then white, with the controller's own waveform
         (about 3.6 s): a picture held for long otherwise shows through the greys more.
         """
-        if len(frame) != WIDTH * HEIGHT // 4:
+        if len(frame) != self.width * self.height // 4:
             raise ValueError("frame size")
         if self._idle:
             self._idle.cancel()

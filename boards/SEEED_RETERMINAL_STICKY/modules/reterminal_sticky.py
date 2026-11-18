@@ -13,6 +13,19 @@ _REV = const(0x70)
 _SSD2677_REV = const(0x07)
 # R46, ten times the sense resistor TI calibrates the gauge for (docs/hardware.md).
 _SENSE_MOHM = const(100)
+# The SSD1677 glass's settings for ssd1677.SSD1677; docs/hardware.md gives each one's source.
+_GLASS = {
+    "width": 800,
+    "height": 480,
+    "data_entry": 0x01,  # X up, Y down: the gates are addressed from the bottom
+    "refresh": (0xC0, 0xFC),  # draftling's: ghosts least, and leaves the supply on for a burst
+    "clean": (0x01, 0xF7),
+    "power_off": (0x80, 0x03),
+    "grey": (0x00, 0xD7, b"\x67\x00", ((1, 1), (1, 0), (0, 1), (0, 0))),
+    "gate_scan": 0x02,
+    "booster": b"\xae\xc7\xc3\xc0\x80",
+    "temp_sensor": 0x80,
+}
 
 
 def spi(baudrate=10_000_000):
@@ -122,7 +135,7 @@ def panel(baudrate=10_000_000):
     import ssd1677
 
     b = Pin.board
-    driver = ssd1677.SSD1677(bus, b.EPD_CS, b.EPD_DC, b.EPD_RST, b.EPD_BUSY)
+    driver = ssd1677.SSD1677(bus, b.EPD_CS, b.EPD_DC, b.EPD_RST, b.EPD_BUSY, **_GLASS)
     driver.init()
     return driver
 

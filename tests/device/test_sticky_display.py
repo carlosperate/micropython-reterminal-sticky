@@ -15,6 +15,7 @@ class TestDisplay(unittest.TestCase):
         except NotImplementedError as e:
             self.skipTest(str(e))
         display = Display(panel, burst=2)
+        self.assertEqual((display.width, display.height), (800, 480))
         asyncio.run(self.count(display))
 
     async def count(self, display):
@@ -23,7 +24,7 @@ class TestDisplay(unittest.TestCase):
             partials = []
             for n in range(1, 5):
                 display.fill(1)
-                display.rect(0, 0, 800, 480, 0)
+                display.rect(0, 0, display.width, display.height, 0)
                 display.fill_rect(360 + 20 * n, 200, 16, 16 * n, 0)
                 display.text("refresh %d" % n, 16, 16, 0)
                 start = time.ticks_ms()
@@ -73,7 +74,7 @@ class TestDisplay(unittest.TestCase):
             try:
                 display.text("before grey", 16, 16, 0)
                 await display.show()
-                grey = bytearray(800 * 480 // 4)
+                grey = bytearray(display.width * display.height // 4)
                 grey[: len(grey) // 2] = b"\x55" * (len(grey) // 2)  # top half level 1
                 grey[len(grey) // 2 :] = b"\xaa" * (len(grey) // 2)  # bottom half level 2
                 await display.show_grey(grey)

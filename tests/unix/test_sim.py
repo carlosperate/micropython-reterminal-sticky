@@ -8,6 +8,21 @@ BLACK = bytes(48000)
 
 
 class TestSimPanel(unittest.TestCase):
+    def test_size(self):
+        panel = SimPanel()
+        self.assertEqual((panel.width, panel.height), (800, 480))
+        panel = SimPanel(width=400, height=300)
+        self.assertEqual((panel.width, panel.height), (400, 300))
+        panel.show(bytes(15000))
+        self.assertEqual(panel.glass, bytes(15000))
+        for call in (lambda: panel.show(BLACK), lambda: panel.show_grey(bytes(96000))):
+            with self.assertRaises(ValueError):
+                call()
+        # As the driver: rows are whole bytes, and neither side is empty.
+        for width, height in ((404, 480), (0, 480), (800, 0)):
+            with self.assertRaises(ValueError):
+                SimPanel(width=width, height=height)
+
     def test_full(self):
         panel = SimPanel()
         panel.show(BLACK)
