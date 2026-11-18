@@ -1,7 +1,7 @@
 # Seeed reTerminal Sticky board helpers: the shared SPI and sensor I2C buses, which display
-# controller the panel has, and its driver; the battery's gauge, USB power, charging and
-# power-off. Pins come from pins.csv through Pin.board. Functions that take pins import machine
-# only when they fall back to the board's, so the unix tests can pass fakes.
+# controller the panel has, its driver and a display on it; the battery's gauge, USB power,
+# charging and power-off. Pins come from pins.csv through Pin.board. Functions that take pins
+# import machine only when they fall back to the board's, so the unix tests can pass fakes.
 
 import time
 from micropython import const
@@ -140,13 +140,20 @@ def panel(baudrate=10_000_000):
     return driver
 
 
+def display():
+    """Return a sticky.display.Display on panel()."""
+    from sticky.display import Display
+
+    return Display(panel())
+
+
 _i2c = None
 
 
 def i2c():
     """Return I2C(0), the bus the gauge, SHT40, PCF8563 and IMU share, built at the first call."""
     global _i2c
-    # Kept: constructing I2C(0) again rebuilds the bus under the other sensors' drivers.
+    # Kept: each I2C(0) deletes and re-creates the IDF bus (ports/esp32/machine_i2c.c).
     if _i2c is None:
         from machine import I2C
 

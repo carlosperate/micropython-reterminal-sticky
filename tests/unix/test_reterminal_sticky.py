@@ -112,6 +112,21 @@ class TestPanel(unittest.TestCase):
         self.assertEqual([pin.mode for pin in (b.EPD_CS, b.EPD_DC, b.EPD_RST)], [Pin.IN] * 3)
 
 
+class TestDisplay(unittest.TestCase):
+    def test_display_on_panel(self):
+        from sticky.display import Display
+        from sticky_sim import SimPanel
+
+        panel, saved = SimPanel(), reterminal_sticky.panel
+        reterminal_sticky.panel = lambda: panel
+        try:
+            display = reterminal_sticky.display()
+        finally:
+            reterminal_sticky.panel = saved
+        self.assertIsInstance(display, Display)
+        self.assertIs(display.panel, panel)
+
+
 # The sensor bus, with a fake machine that counts the I2C buses it builds.
 class TestI2C(unittest.TestCase):
     def setUp(self):

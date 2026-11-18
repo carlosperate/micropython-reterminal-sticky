@@ -1,6 +1,6 @@
 metadata(
     description="Helpers for the reTerminal Sticky's e-paper panel.",
-    version="0.3.0",
+    version="0.4.0",
 )
 
 # bleuart.py comes with sticky-bleuart.

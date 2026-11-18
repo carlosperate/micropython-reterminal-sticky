@@ -4,13 +4,13 @@ import asyncio
 
 import reterminal_sticky
 from sticky.bleuart import BLEUART
-from sticky.display import Display
+from sticky.display import WHITE
 
 
 async def show(display, text):
-    display.fill(1)
-    display.text(text, 24, 24, 0)
-    await display.show()
+    display.fill(WHITE)
+    display.text(text, 24, 24)
+    await display.show_async()
 
 
 async def main(uart, display):
@@ -27,5 +27,5 @@ async def main(uart, display):
 
 
 # Leaving the block, even on Ctrl-C, stops advertising and turns the high voltage off.
-with BLEUART() as uart, Display(reterminal_sticky.panel()) as display:
+with BLEUART() as uart, reterminal_sticky.display() as display:
     asyncio.run(main(uart, display))
