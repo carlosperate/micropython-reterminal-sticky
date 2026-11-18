@@ -19,7 +19,7 @@ def start(path="/power.csv", period_ms=10_000):
                 gauge.voltage(),
                 gauge.current(),
                 gauge.average_current(),
-                gauge.charge(),
+                gauge.state_of_charge(),
             )
         except Exception as e:
             line = "%d,error,%r\n" % (time.ticks_ms(), e)

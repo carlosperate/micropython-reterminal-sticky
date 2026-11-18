@@ -11,7 +11,7 @@ async def main(display):
         lines = (
             "USB power: %s" % reterminal_sticky.usb_power(),
             "Charging:  %s" % reterminal_sticky.charging(),
-            "Battery:   %d%%, %d mV" % (gauge.charge(), gauge.voltage()),
+            "Battery:   %d%%, %d mV" % (gauge.state_of_charge(), gauge.voltage()),
             "Current:   %.1f mA" % gauge.average_current(),
         )
         display.fill(1)

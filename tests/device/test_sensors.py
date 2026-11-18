@@ -3,7 +3,7 @@
 import unittest
 
 import reterminal_sticky
-from machine import I2C, Pin
+from machine import Pin
 
 SHT40 = 0x44
 PCF8563 = 0x51
@@ -13,10 +13,12 @@ LSM6DS3TR_C = 0x6A
 
 class TestSensorBus(unittest.TestCase):
     def test_scan(self):
-        self.assertEqual(I2C(0).scan(), [SHT40, PCF8563, BQ27220, LSM6DS3TR_C])
+        bus = reterminal_sticky.i2c()
+        self.assertIs(reterminal_sticky.i2c(), bus)
+        self.assertEqual(bus.scan(), [SHT40, PCF8563, BQ27220, LSM6DS3TR_C])
 
     def test_imu_who_am_i(self):
-        self.assertEqual(I2C(0).readfrom_mem(LSM6DS3TR_C, 0x0F, 1), b"\x6a")
+        self.assertEqual(reterminal_sticky.i2c().readfrom_mem(LSM6DS3TR_C, 0x0F, 1), b"\x6a")
 
 
 class TestPower(unittest.TestCase):
@@ -24,8 +26,9 @@ class TestPower(unittest.TestCase):
         # Bounds that hold at any charge: the charger stops at 4.2 V and is set to 555 mA, so a
         # scale ten times out reads outside them.
         gauge = reterminal_sticky.gauge()
+        self.assertIs(gauge.i2c, reterminal_sticky.i2c())
         self.assertTrue(0 < gauge.voltage() <= 4400)
-        self.assertTrue(0 <= gauge.charge() <= 100)
+        self.assertTrue(0 <= gauge.state_of_charge() <= 100)
         self.assertTrue(-1000 <= gauge.current() <= 1000)
         # Seeed's 750 mAh cell: a gauge reset would bring back TI's 3000 mAh, and the wrong scale.
         self.assertEqual(gauge.design_capacity(), 750)

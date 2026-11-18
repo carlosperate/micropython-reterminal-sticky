@@ -43,7 +43,7 @@ class TestBQ27220(unittest.TestCase):
         # Volts, a percentage and minutes don't depend on the sense resistor.
         g = gauge(sense_mohm=100)
         self.assertEqual(g.voltage(), 4193)
-        self.assertEqual(g.charge(), 99)
+        self.assertEqual(g.state_of_charge(), 99)
         self.assertEqual(g.time_to_empty(), 1476)
 
     def test_charging_current_is_positive(self):

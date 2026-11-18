@@ -44,7 +44,7 @@ class BQ27220:
         """Current filtered by the gauge, mA."""
         return self._ma(_AVERAGE_CURRENT)
 
-    def charge(self):
+    def state_of_charge(self):
         """State of charge, %."""
         return self._read(_STATE_OF_CHARGE)
 

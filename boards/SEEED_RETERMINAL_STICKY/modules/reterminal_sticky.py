@@ -1,7 +1,7 @@
-# Seeed reTerminal Sticky board helpers: the shared SPI bus, which display controller the panel
-# has, and its driver; the battery's gauge, USB power, charging and power-off. Pins come from
-# pins.csv through Pin.board. Functions that take pins import machine only when they fall back to
-# the board's, so the unix tests can pass fakes.
+# Seeed reTerminal Sticky board helpers: the shared SPI and sensor I2C buses, which display
+# controller the panel has, and its driver; the battery's gauge, USB power, charging and
+# power-off. Pins come from pins.csv through Pin.board. Functions that take pins import machine
+# only when they fall back to the board's, so the unix tests can pass fakes.
 
 import time
 from micropython import const
@@ -140,18 +140,28 @@ def panel(baudrate=10_000_000):
     return driver
 
 
-def gauge(i2c=None):
-    """Return the battery's BQ27220 gauge, scaled for the board's sense resistor.
+_i2c = None
 
-    Pass your I2C(0) if you have one: constructing it again rebuilds the bus.
-    """
-    import bq27220
 
-    if i2c is None:
+def i2c():
+    """Return I2C(0), the bus the gauge, SHT40, PCF8563 and IMU share, built at the first call."""
+    global _i2c
+    # Kept: constructing I2C(0) again rebuilds the bus under the other sensors' drivers.
+    if _i2c is None:
         from machine import I2C
 
-        i2c = I2C(0)
-    return bq27220.BQ27220(i2c, sense_mohm=_SENSE_MOHM)
+        _i2c = I2C(0)
+    return _i2c
+
+
+_sensor_bus = i2c  # for gauge(), whose argument hides the name
+
+
+def gauge(i2c=None):
+    """Return the battery's BQ27220 gauge on i2c(), scaled for the board's sense resistor."""
+    import bq27220
+
+    return bq27220.BQ27220(_sensor_bus() if i2c is None else i2c, sense_mohm=_SENSE_MOHM)
 
 
 def usb_power(vbus=None):
