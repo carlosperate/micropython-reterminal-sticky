@@ -9,13 +9,14 @@ from sticky.bleuart import BLEUART, repl
 
 
 class TestBLEUART(unittest.TestCase):
+    # Nothing to read, and with no central nothing can be written either.
     def assert_empty(self, uart):
         self.assertEqual(uart.any(), 0)
         self.assertIsNone(uart.read())
         self.assertIsNone(uart.readline())
         self.assertIsNone(uart.readinto(bytearray(8)))
         poll = select.poll()
-        poll.register(uart, select.POLLIN)
+        poll.register(uart, select.POLLIN | select.POLLOUT)
         self.assertEqual(poll.poll(0), [])
 
     def test_nothing_received(self):
@@ -28,9 +29,9 @@ class TestBLEUART(unittest.TestCase):
     def test_uart(self):
         uart = BLEUART()
         self.assertTrue(uart.name.startswith("sticky-") and len(uart.name) == 11, uart.name)
-        self.assertFalse(uart.connected)
+        self.assertFalse(uart.is_connected())
         self.assertEqual(uart.write(b"nobody listening\n"), 0)
-        self.assertIsNone(uart.read())
+        self.assert_empty(uart)
         uart.close()
         # close() leaves the radio to the programme.
         self.assertTrue(bluetooth.BLE().active())
@@ -47,7 +48,7 @@ class TestBLEUART(unittest.TestCase):
     def test_repl_attaches(self):
         uart = repl()
         try:
-            self.assertFalse(uart.connected)
+            self.assertFalse(uart.is_connected())
             print("printed with the BLE UART attached")
         finally:
             os.dupterm(None)

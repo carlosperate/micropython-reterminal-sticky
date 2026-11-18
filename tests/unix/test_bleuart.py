@@ -9,6 +9,10 @@ ble = fakes.BLE()
 sys.modules["bluetooth"] = fakes.bluetooth_module(ble)
 from sticky import bleuart  # noqa: E402
 
+# The stream ioctl requests and poll flags, from py/stream.h.
+POLL, CLOSE, GET_FILENO = 3, 4, 10
+RD, WR = 0x0001, 0x0004
+
 
 class TestBLEUART(unittest.TestCase):
     def setUp(self):
@@ -80,13 +84,53 @@ class TestBLEUART(unittest.TestCase):
 
     # A poll that says readable when nothing is spins an asyncio reader until the next write.
     def test_poll_after_reading_everything(self):
-        poll, rd = 3, 1  # MP_STREAM_POLL, MP_STREAM_POLL_RD
-        self.assertEqual(self.uart.ioctl(poll, rd), 0)
+        self.assertEqual(self.uart.ioctl(POLL, RD), 0)
         ble.connect()
         ble.write(b"hi")
-        self.assertEqual(self.uart.ioctl(poll, rd), rd)
+        self.assertEqual(self.uart.ioctl(POLL, RD), RD)
         self.uart.read()
-        self.assertEqual(self.uart.ioctl(poll, rd), 0)
+        self.assertEqual(self.uart.ioctl(POLL, RD), 0)
+
+    def test_poll_writable_only_connected(self):
+        self.assertEqual((self.uart.is_connected(), self.uart.ioctl(POLL, WR)), (False, 0))
+        ble.connect()
+        self.assertEqual((self.uart.is_connected(), self.uart.ioctl(POLL, WR)), (True, WR))
+        ble.disconnect()
+        self.assertEqual((self.uart.is_connected(), self.uart.ioctl(POLL, WR)), (False, 0))
+
+    def test_no_fileno(self):
+        self.assertTrue(self.uart.ioctl(GET_FILENO, 0) < 0)
+
+    def test_close_through_ioctl(self):
+        ble.connect(conn=4)
+        self.assertEqual(self.uart.ioctl(CLOSE, 0), 0)
+        self.assertEqual(ble.disconnected, [4])
+        self.assertFalse(self.uart.is_connected())
+
+    # Polled writable regardless, drain() called write() thousands of times without a central.
+    def test_drain_waits_for_central(self):
+        writes = []
+        write = self.uart.write
+
+        def counted(buf):
+            writes.append(None)
+            return write(buf)
+
+        self.uart.write = counted
+
+        async def main():
+            writer = asyncio.StreamWriter(self.uart)
+            writer.write(b"hello\n")
+            task = asyncio.create_task(writer.drain())
+            await asyncio.sleep_ms(100)
+            waiting = (len(writes), task.done())
+            ble.connect()
+            await asyncio.wait_for_ms(task, 1000)
+            return waiting
+
+        # Only the writer's own first try, then none until the central connects.
+        self.assertEqual(asyncio.run(main()), (1, False))
+        self.assertEqual(ble.notified, [b"hello\n"])
 
     # A loss is a gap: what was waiting goes, and readers can tell from gaps. No framing here.
     def test_overflow_is_a_gap(self):
@@ -173,13 +217,13 @@ class TestBLEUART(unittest.TestCase):
         with bleuart.BLEUART() as uart:
             ble.connect(conn=5)
         self.assertEqual(ble.disconnected, [5])
-        self.assertFalse(uart.connected)
+        self.assertFalse(uart.is_connected())
 
     def test_close(self):
         ble.connect(conn=9)
         self.uart.close()
         self.assertEqual(ble.disconnected, [9])
-        self.assertFalse(self.uart.connected)
+        self.assertFalse(self.uart.is_connected())
         ble.disconnect(conn=9)
         self.assertFalse(ble.advertising)
 

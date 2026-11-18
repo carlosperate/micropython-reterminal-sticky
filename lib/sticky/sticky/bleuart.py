@@ -19,8 +19,10 @@ _FLAG_WRITE = const(0x0008)
 _FLAG_NOTIFY = const(0x0010)
 
 _MP_STREAM_POLL = const(3)
+_MP_STREAM_CLOSE = const(4)
 _MP_STREAM_POLL_RD = const(0x0001)
 _MP_STREAM_POLL_WR = const(0x0004)
+_MP_EINVAL = const(-22)
 
 _ADV_TYPE_FLAGS = const(0x01)
 _ADV_TYPE_NAME = const(0x09)
@@ -79,8 +81,7 @@ class BLEUART(io.IOBase):
         self._ble.irq(self._irq)
         self._advertise()
 
-    @property
-    def connected(self):
+    def is_connected(self):
         return self._conn is not None
 
     def __enter__(self):
@@ -132,12 +133,18 @@ class BLEUART(io.IOBase):
         return len(buf)
 
     def ioctl(self, op, arg):
-        if op != _MP_STREAM_POLL:
+        if op == _MP_STREAM_POLL:
+            # With no central write() takes nothing, so an asyncio writer's drain() would spin.
+            ready = _MP_STREAM_POLL_WR if arg & _MP_STREAM_POLL_WR and self.is_connected() else 0
+            if arg & _MP_STREAM_POLL_RD and self.any():
+                ready |= _MP_STREAM_POLL_RD
+            return ready
+        # How C code closes a stream (py/stream.c:444), os.dupterm() when it detaches one.
+        if op == _MP_STREAM_CLOSE:
+            self.close()
             return 0
-        ready = _MP_STREAM_POLL_WR if arg & _MP_STREAM_POLL_WR else 0
-        if arg & _MP_STREAM_POLL_RD and self.any():
-            ready |= _MP_STREAM_POLL_RD
-        return ready
+        # Not 0: that answers MP_STREAM_GET_FILENO as fd 0, stdin (extmod/modselect.c:257).
+        return _MP_EINVAL
 
     def close(self):
         """Stop advertising and drop the central. The radio stays on: that's the app's to stop."""
