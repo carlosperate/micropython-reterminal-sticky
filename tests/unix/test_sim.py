@@ -45,6 +45,12 @@ class TestSimPanel(unittest.TestCase):
         self.assertEqual(panel.glass, WHITE)
         self.assertEqual((panel.full, panel.partial), (1, 2))
 
+    # As the driver: not busy before its first refresh, whatever an earlier one left.
+    def test_not_busy_when_built(self):
+        panel = SimPanel(refresh_ms=1000, timeout_ms=10)
+        self.assertFalse(panel.busy())
+        panel.wait()
+
     # As the driver: not busy while asleep, and show() wakes it.
     def test_asleep(self):
         panel = SimPanel()

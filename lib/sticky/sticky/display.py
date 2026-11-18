@@ -181,7 +181,8 @@ class Display(framebuf.FrameBuffer):
         full = full or not self._known or self.partials >= self.burst
         self._known = False
         self.panel.show(frame, None if full else self._glass)
-        self._glass[:] = frame
+        if frame is not self._glass:  # a redraw sends _glass itself
+            self._glass[:] = frame
         self._known = True
         self.partials = 0 if full else self.partials + 1
 

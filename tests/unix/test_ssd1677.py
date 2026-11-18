@@ -6,6 +6,7 @@ import framebuf
 import reterminal_sticky
 import ssd1677
 from fakes import SPI, Pin, script, word
+from sticky.display import Display
 
 # draftling's init for the Sticky's SSD1677.
 INIT = [
@@ -540,6 +541,33 @@ class TestFirstRefresh(PanelCase):
         del self.spi.log[:]
         self.panel.show(frame(1))
         self.assertEqual(self.log()[: len(INIT)], INIT)
+
+    # As a controller an earlier driver put in deep sleep: BUSY high until a reset.
+    def asleep_until_reset(self):
+        self.busy.input = script([1])
+
+        def wake(level):
+            if level:
+                self.busy.input = script([0])
+
+        self.rst.on_change = wake
+        self.panel.timeout_ms = 20
+
+    def test_busy_counts_from_the_first_reset(self):
+        self.asleep_until_reset()
+        self.assertFalse(self.panel.busy())
+        self.panel.wait()
+        self.panel.show(frame(1))
+        self.busy.input = script([1])
+        self.assertTrue(self.panel.busy())
+
+    # Display waits before it shows: that wait mustn't time out before the driver's init().
+    def test_display_on_a_controller_left_asleep(self):
+        self.asleep_until_reset()
+        display = Display(self.panel)
+        display.show()
+        self.assertEqual(self.log()[: len(INIT)], INIT)
+        self.assertFalse(self.panel._powered)
 
 
 # Every byte the Sticky's settings send, planes as (length, CRC-32): init, a full and a partial

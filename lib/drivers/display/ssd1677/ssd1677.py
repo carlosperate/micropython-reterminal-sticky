@@ -69,14 +69,9 @@ def _grey_plane(dst: ptr8, src: ptr8, start: int, n: int, table: ptr8):
 
 
 class SSD1677:
-    """Frames are MONO_HLSB, width * height // 8 bytes, with 1 for white. Grey frames are
-    GS2_HMSB, twice that, 0 black to 3 white.
-
-    The glass's settings: data_entry is sent with 0x11 (bits 0 and 1 only). refresh, clean and
-    power_off are (border, update) pairs, sent with 0x3C and 0x22, for show(), clean() and
-    power_off(). booster is 0x0C's data. grey is (border, update, temperature, levels) for
-    show_grey(): temperature is sent with 0x1A, and levels gives each grey level's bits in RAM
-    0x24 and 0x26. gate_scan is 0x01's last byte and temp_sensor 0x18's.
+    """Frames are MONO_HLSB, width * height // 8 bytes, 1 for white; grey frames GS2_HMSB, 0 black
+    to 3 white. refresh, clean and power_off are (border, update) pairs for 0x3C and 0x22. grey is
+    (border, update, temperature for 0x1A, levels): each level's bits in RAM 0x24 and 0x26.
     """
 
     def __init__(
@@ -142,15 +137,11 @@ class SSD1677:
         self._cmd = bytearray(1)
         self._arg = bytearray(1)
         self._buf = bytearray(min(rows * width // 8, self._plane_size))
-        self._asleep = False
+        self._asleep = None  # unknown until the first reset: an earlier driver may have slept it
         self._powered = False
-        # The glass may not match the planes (unknown at first, greys, or a transfer cut short), so
-        # the next show() drives every pixel. init() leaves it alone; only a show() that gets as
-        # far as starting its refresh clears it.
+        # Unknown at first, after greys or a cut transfer: the next show() drives every pixel.
         self._stale = True
-        # Until an init() completes (never run, or cut short with reset maybe still held), the
-        # next refresh runs one.
-        self._init_pending = True
+        self._init_pending = True  # the next refresh runs init() until one completes
 
     def init(self):
         """Reset the controller and fill both planes white.
@@ -190,7 +181,7 @@ class SSD1677:
 
     # In deep sleep BUSY stays high, though nothing is running.
     def busy(self):
-        return not self._asleep and self._busy() == 1
+        return self._asleep is False and self._busy() == 1
 
     def wait(self, timeout_ms=None):
         start = time.ticks_ms()

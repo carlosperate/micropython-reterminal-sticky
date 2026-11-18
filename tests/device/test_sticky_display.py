@@ -1,11 +1,14 @@
 # Counts 1 to 4 on the glass with a burst of 2 (full, partial, partial, full), sleeps, and wakes
 # to add "woke" under the count; then checks the idle power-off turns the high voltage off. The
-# plain test leaves "plain show()", "full" and "partial" in black, drawn with no colour given.
+# plain test leaves "plain show()", "full" and "partial" in black, drawn with no colour given,
+# and the hand-built one "hand-built driver".
 import asyncio
 import time
 import unittest
 
 import reterminal_sticky
+import ssd1677
+from machine import Pin
 from sticky.display import Display
 
 
@@ -121,5 +124,24 @@ class TestDisplay(unittest.TestCase):
             display.sleep()
             print("sleep after a partial: %d ms" % time.ticks_diff(time.ticks_ms(), start))
             self.assertEqual(display.partials, 0)
+        finally:
+            display.sleep()
+
+    # Onto a controller left asleep, where BUSY stays high: the first wait mustn't time out.
+    def test_hand_built(self):
+        try:
+            reterminal_sticky.panel().sleep()
+        except NotImplementedError as e:
+            self.skipTest(str(e))
+        b = Pin.board
+        pins = (b.EPD_CS, b.EPD_DC, b.EPD_RST, b.EPD_BUSY)
+        panel = ssd1677.SSD1677(reterminal_sticky.spi(), *pins, **reterminal_sticky._GLASS)
+        display = Display(panel)
+        try:
+            display.text("hand-built driver", 16, 16)
+            start = time.ticks_ms()
+            display.show()
+            print("hand-built show: %d ms" % time.ticks_diff(time.ticks_ms(), start))
+            self.assertFalse(panel._powered)
         finally:
             display.sleep()
