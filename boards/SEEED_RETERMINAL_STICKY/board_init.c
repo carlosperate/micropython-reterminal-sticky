@@ -76,5 +76,8 @@ void STICKY_board_startup(void) {
     drive(PIN_MIC_EN, 0);
     drive(PIN_BUZZER, 0);
 
+    // Seeed's firmware waits this long after latching, for the rails to settle.
+    esp_rom_delay_us(100 * 1000);
+
     boardctrl_startup();
 }
