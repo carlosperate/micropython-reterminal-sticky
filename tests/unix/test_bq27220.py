@@ -1,20 +1,8 @@
 import unittest
 
 from bq27220 import BQ27220
+from fakes import GAUGE as RAW
 from fakes import I2C, word
-
-
-# Raw readings from a Sticky on battery at the REPL (2026-10-30).
-RAW = {
-    0x08: word(4193),
-    0x0C: word(-300),
-    0x10: word(7431),
-    0x12: word(7500),
-    0x14: word(-302),
-    0x16: word(1476),
-    0x2C: word(99),
-    0x3C: word(7500),
-}
 
 
 def gauge(sense_mohm=10, changes={}):

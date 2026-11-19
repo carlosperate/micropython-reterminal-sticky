@@ -155,22 +155,26 @@ def unix(args):
 
 
 def test(args):
-    """Run tests/unix/ on the unix port.
+    """Run tests/unix/ and tests/common/ on the unix port.
 
     It runs in Docker, as the binary is built for Linux.
     """
     unix(args)
     docker("python3", WORK / "tools" / "packages.py", "--check")
+    # The board's heap: tests/common runs on both, and the unix port's default is far smaller.
     docker(
         UNIX_BUILD / "micropython",
+        "-X",
+        "heapsize=8M",
         WORK / "tests" / "run.py",
         WORK / "tests" / "unix",
+        WORK / "tests" / "common",
         options=[AMD64],
     )
 
 
 def test_device(args):
-    """Run tests/device/ on the board.
+    """Run tests/device/ and tests/common/ on the board.
 
     esptool resets it through EN first, so the pins start as board_init.c leaves them.
     machine.reset() would keep the GPIO setup of whatever ran before.

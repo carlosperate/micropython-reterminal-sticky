@@ -24,19 +24,13 @@ class TestBLEUART(unittest.TestCase):
         self.assertEqual(ble.config_set["gap_name"], "sticky-69f2")
         self.assertTrue(ble.advertising)
 
-    # The limit is in bytes: "é" takes two. Nothing is set up when it's refused.
-    def test_name_limit(self):
-        for name in ("x" * 26, "é" * 13):
-            self.assertEqual(bleuart.BLEUART(name).name, name)
+    # The limit itself is in the common tests; nothing is set up when it's refused.
+    def test_refused_name_sets_nothing_up(self):
         for name in ("x" * 27, "é" * 14):
             ble.__init__()
             with self.assertRaises(ValueError):
                 bleuart.BLEUART(name)
             self.assertEqual((ble.config_set, ble.handler), ({}, None))
-
-    def test_write_without_central(self):
-        self.assertEqual(self.uart.write(b"hello"), 0)
-        self.assertEqual(ble.notified, [])
 
     def test_write_chunks_to_mtu(self):
         ble.connect()

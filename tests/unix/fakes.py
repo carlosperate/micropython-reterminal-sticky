@@ -49,6 +49,19 @@ def word(value):
     return (value & 0xFFFF).to_bytes(2, "little")
 
 
+# The BQ27220's raw readings on a Sticky on battery at the REPL (2026-10-30).
+GAUGE = {
+    0x08: word(4193),
+    0x0C: word(-300),
+    0x10: word(7431),
+    0x12: word(7500),
+    0x14: word(-302),
+    0x16: word(1476),
+    0x2C: word(99),
+    0x3C: word(7500),
+}
+
+
 class I2C:
     """Answers register reads from {addr: {register: bytes}}; it has no write methods."""
 

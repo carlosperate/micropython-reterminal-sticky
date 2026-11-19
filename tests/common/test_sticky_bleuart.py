@@ -1,14 +1,29 @@
-# The BLE UART on the board's radio. Connecting needs a central: the Chrome checks in
+# The BLE UART with no central: on the unit's radio, and on the unix port's fake bluetooth.
+# Connecting needs a central: the unix tests play one, and on the unit the Chrome checks in
 # docs/bleuart.md cover echo, long writes, the REPL over BLE and reconnects.
 import os
 import select
+import sys
 import unittest
 
-import bluetooth
-from sticky.bleuart import BLEUART, repl
+BOARD = sys.platform == "esp32"
+if not BOARD:
+    sys.path.append("tests/unix")
+    import fakes
+
+    # test_bleuart.py may have put one in first, which sticky.bleuart then holds.
+    if "bluetooth" not in sys.modules:
+        sys.modules["bluetooth"] = fakes.bluetooth_module(fakes.BLE())
+
+import bluetooth  # noqa: E402
+from sticky.bleuart import BLEUART, repl  # noqa: E402
 
 
 class TestBLEUART(unittest.TestCase):
+    def setUp(self):
+        if not BOARD:
+            bluetooth.BLE().__init__()
+
     # Nothing to read, and with no central nothing can be written either.
     def assert_empty(self, uart):
         self.assertEqual(uart.any(), 0)
@@ -36,16 +51,21 @@ class TestBLEUART(unittest.TestCase):
         # close() leaves the radio to the programme.
         self.assertTrue(bluetooth.BLE().active())
 
-    # NimBLE refuses advertising data over 31 bytes, which a 27-byte name makes.
+    # NimBLE refuses advertising data over 31 bytes, which a 27-byte name makes. In bytes: "é"
+    # takes two.
     def test_name_limit(self):
-        with self.assertRaises(ValueError):
-            BLEUART("x" * 27)
-        with BLEUART("x" * 26) as uart:
-            self.assertEqual(uart.name, "x" * 26)
+        for name in ("x" * 27, "é" * 14):
+            with self.assertRaises(ValueError):
+                BLEUART(name)
+        for name in ("x" * 26, "é" * 13):
+            with BLEUART(name) as uart:
+                self.assertEqual(uart.name, name)
         with BLEUART() as uart:
             self.assertTrue(uart.name.startswith("sticky-"))
 
     def test_repl_attaches(self):
+        if not hasattr(os, "dupterm"):
+            self.skipTest("no os.dupterm on this port")
         uart = repl()
         try:
             self.assertFalse(uart.is_connected())
@@ -54,3 +74,7 @@ class TestBLEUART(unittest.TestCase):
             os.dupterm(None)
             uart.close()
             bluetooth.BLE().active(False)
+
+
+if __name__ == "__main__":
+    unittest.main()

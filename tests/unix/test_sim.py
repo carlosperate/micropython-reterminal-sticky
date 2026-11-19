@@ -29,12 +29,6 @@ class TestSimPanel(unittest.TestCase):
         self.assertEqual(panel.glass, BLACK)
         self.assertEqual((panel.full, panel.partial), (1, 0))
 
-    # As the driver: no init() needed, and the first refresh is full whatever old is.
-    def test_first_show_is_full(self):
-        panel = SimPanel()
-        panel.show(WHITE, BLACK)
-        self.assertEqual((panel.full, panel.partial), (1, 0))
-
     # Pixels where old matches new aren't driven, even if the glass differs.
     def test_partial_trusts_old(self):
         panel = SimPanel()
@@ -44,44 +38,6 @@ class TestSimPanel(unittest.TestCase):
         panel.show(WHITE, BLACK)
         self.assertEqual(panel.glass, WHITE)
         self.assertEqual((panel.full, panel.partial), (1, 2))
-
-    # As the driver: not busy before its first refresh, whatever an earlier one left.
-    def test_not_busy_when_built(self):
-        panel = SimPanel(refresh_ms=1000, timeout_ms=10)
-        self.assertFalse(panel.busy())
-        panel.wait()
-
-    # As the driver: not busy while asleep, and show() wakes it.
-    def test_asleep(self):
-        panel = SimPanel()
-        panel.sleep()
-        self.assertFalse(panel.busy())
-        panel.wait(0)
-        panel.show(WHITE)
-        self.assertFalse(panel.asleep)
-
-    def test_timeout(self):
-        panel = SimPanel(refresh_ms=1000, timeout_ms=10)
-        panel.show(WHITE)
-        with self.assertRaises(OSError):
-            panel.wait(0)
-        with self.assertRaises(OSError):
-            panel.wait()
-        # As the driver: power-off and sleep go ahead.
-        panel.sleep()
-        self.assertEqual((panel.powered_off, panel.asleep), (1, True))
-
-    def test_frame_size(self):
-        with self.assertRaises(ValueError):
-            SimPanel().show(bytes(100))
-
-    # As the driver: a supply already off isn't turned off again.
-    def test_power_off_twice(self):
-        panel = SimPanel()
-        panel.show(WHITE)
-        panel.power_off()
-        panel.power_off()
-        self.assertEqual(panel.powered_off, 1)
 
     def test_pbm(self):
         path = "/tmp/sticky-test-sim"
@@ -126,21 +82,10 @@ class TestSimGrey(unittest.TestCase):
         panel.show_grey(frame)
         self.assertEqual(panel.glass, b"\x33" * 48000)
         self.assertEqual(panel.greys, frame)
-        self.assertEqual((panel.full, panel.partial, panel.grey), (1, 0, 1))
-        self.assertFalse(panel.powered)
-        panel.power_off()  # as the driver: the grey waveform turned the supply off itself
-        self.assertEqual(panel.powered_off, 0)
-
-    # As the driver: whatever old it's given, the next show() is full.
-    def test_full_after_grey(self):
-        panel = SimPanel()
-        panel.show_grey(grey(lambda x, y: 0))
+        # The full refresh after it drives every pixel, whatever old says.
         panel.show(WHITE, WHITE)
         self.assertEqual(panel.glass, WHITE)
-        self.assertEqual((panel.full, panel.partial), (1, 0))
         self.assertIsNone(panel.greys)
-        panel.show(BLACK, WHITE)
-        self.assertEqual((panel.full, panel.partial), (1, 1))
 
     def test_clean(self):
         panel = SimPanel()
@@ -149,14 +94,6 @@ class TestSimGrey(unittest.TestCase):
         self.assertEqual(panel.glass, WHITE)
         panel.clean(False)
         self.assertEqual(panel.glass, BLACK)
-        self.assertEqual(panel.cleaned, 2)
-        self.assertFalse(panel.powered)
-        panel.show(WHITE, BLACK)
-        self.assertEqual((panel.full, panel.partial), (2, 0))
-
-    def test_grey_frame_size(self):
-        with self.assertRaises(ValueError):
-            SimPanel().show_grey(WHITE)
 
     def test_pgm(self):
         path = "/tmp/sticky-test-sim-grey"

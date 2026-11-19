@@ -1,7 +1,7 @@
-# Counts 1 to 4 on the glass with a burst of 2 (full, partial, partial, full), sleeps, and wakes
-# to add "woke" under the count; then checks the idle power-off turns the high voltage off. The
-# plain test leaves "plain show()", "full" and "partial" in black, drawn with no colour given,
-# and the hand-built one "hand-built driver".
+# What only the real panel shows of Display: close() during a grey refresh, the plain call's
+# timings and power-down, and a hand-built driver. The policy's tests run on both, in
+# tests/common/test_display.py. The plain test leaves "plain show()", "full" and "partial" in
+# black, drawn with no colour given, and the hand-built one "hand-built driver".
 import asyncio
 import time
 import unittest
@@ -13,59 +13,6 @@ from sticky.display import Display
 
 
 class TestDisplay(unittest.TestCase):
-    def test_burst(self):
-        try:
-            panel = reterminal_sticky.panel()
-        except NotImplementedError as e:
-            self.skipTest(str(e))
-        display = Display(panel, burst=2)
-        self.assertEqual((display.width, display.height), (800, 480))
-        asyncio.run(self.count(display))
-
-    async def count(self, display):
-        # 0x22 FC leaves the analog supply on until sleep(), so it runs even on a failure.
-        try:
-            partials = []
-            for n in range(1, 5):
-                display.fill(1)
-                display.rect(0, 0, display.width, display.height, 0)
-                display.fill_rect(360 + 20 * n, 200, 16, 16 * n, 0)
-                display.text("refresh %d" % n, 16, 16, 0)
-                start = time.ticks_ms()
-                await display.show_async()
-                # It returns once the panel has the frame, not after the refresh.
-                self.assertTrue(display.panel.busy())
-                print("show %d: %d ms" % (n, time.ticks_diff(time.ticks_ms(), start)))
-                partials.append(display.partials)
-            self.assertEqual(partials, [0, 1, 2, 0])
-            await display.sleep_async()
-            display.text("woke", 16, 32, 0)
-            start = time.ticks_ms()
-            await display.show_async()
-            print("show after sleep: %d ms" % time.ticks_diff(time.ticks_ms(), start))
-            self.assertEqual(display.partials, 0)
-        finally:
-            await display.sleep_async()
-
-    def test_idle_power_off(self):
-        try:
-            panel = reterminal_sticky.panel()
-        except NotImplementedError as e:
-            self.skipTest(str(e))
-        display = Display(panel, idle_ms=300)
-
-        async def main():
-            display.text("idle power-off", 16, 16, 0)
-            await display.show_async()
-            self.assertTrue(panel._powered)
-            # The refresh (about 0.56 s) plus idle_ms plus the power-down.
-            await asyncio.sleep_ms(1500)
-            self.assertFalse(panel._powered)
-            self.assertFalse(panel.busy())
-            await display.sleep_async()
-
-        asyncio.run(main())
-
     # A grey frame between two black-and-white ones: the one after it is full.
     def test_grey(self):
         try:

@@ -112,58 +112,6 @@ class TestPanel(unittest.TestCase):
         self.assertEqual([pin.mode for pin in (b.EPD_CS, b.EPD_DC, b.EPD_RST)], [Pin.IN] * 3)
 
 
-class TestDisplay(unittest.TestCase):
-    def test_display_on_panel(self):
-        from sticky.display import Display
-        from sticky_sim import SimPanel
-
-        panel, saved = SimPanel(), reterminal_sticky.panel
-        reterminal_sticky.panel = lambda: panel
-        try:
-            display = reterminal_sticky.display()
-        finally:
-            reterminal_sticky.panel = saved
-        self.assertIsInstance(display, Display)
-        self.assertIs(display.panel, panel)
-
-
-# The sensor bus, with a fake machine that counts the I2C buses it builds.
-class TestI2C(unittest.TestCase):
-    def setUp(self):
-        built = self.built = []
-
-        class machine:
-            class I2C:
-                def __init__(self, id):
-                    built.append(id)
-
-        self.saved = sys.modules.get("machine")
-        sys.modules["machine"] = machine
-        reterminal_sticky._i2c = None
-
-    def tearDown(self):
-        reterminal_sticky._i2c = None
-        sys.modules.pop("machine")
-        if self.saved:
-            sys.modules["machine"] = self.saved
-
-    def test_built_once(self):
-        bus = reterminal_sticky.i2c()
-        self.assertIs(reterminal_sticky.i2c(), bus)
-        self.assertEqual(self.built, [0])
-
-    def test_gauge_shares_it(self):
-        first, second = reterminal_sticky.gauge(), reterminal_sticky.gauge()
-        self.assertEqual(self.built, [0])
-        self.assertIs(first.i2c, second.i2c)
-        self.assertIs(first.i2c, reterminal_sticky.i2c())
-
-    def test_gauge_takes_a_bus(self):
-        bus = I2C({})
-        self.assertIs(reterminal_sticky.gauge(bus).i2c, bus)
-        self.assertEqual(self.built, [])
-
-
 class TestPower(unittest.TestCase):
     def test_gauge_scaled_for_r46(self):
         # The board's gauge reads ten times high: 7500 mAh for the 750 mAh cell.

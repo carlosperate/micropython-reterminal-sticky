@@ -14,7 +14,6 @@ LSM6DS3TR_C = 0x6A
 class TestSensorBus(unittest.TestCase):
     def test_scan(self):
         bus = reterminal_sticky.i2c()
-        self.assertIs(reterminal_sticky.i2c(), bus)
         self.assertEqual(bus.scan(), [SHT40, PCF8563, BQ27220, LSM6DS3TR_C])
 
     def test_imu_who_am_i(self):
@@ -22,17 +21,6 @@ class TestSensorBus(unittest.TestCase):
 
 
 class TestPower(unittest.TestCase):
-    def test_gauge(self):
-        # Bounds that hold at any charge: the charger stops at 4.2 V and is set to 555 mA, so a
-        # scale ten times out reads outside them.
-        gauge = reterminal_sticky.gauge()
-        self.assertIs(gauge.i2c, reterminal_sticky.i2c())
-        self.assertTrue(0 < gauge.voltage() <= 4400)
-        self.assertTrue(0 <= gauge.state_of_charge() <= 100)
-        self.assertTrue(-1000 <= gauge.current() <= 1000)
-        # Seeed's 750 mAh cell: a gauge reset would bring back TI's 3000 mAh, and the wrong scale.
-        self.assertEqual(gauge.design_capacity(), 750)
-
     def test_usb_power(self):
         self.assertTrue(reterminal_sticky.usb_power())  # the tests run over USB
 

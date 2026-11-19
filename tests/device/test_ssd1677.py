@@ -41,13 +41,21 @@ def grey_card(panel):
     return buf
 
 
+# Above the bench's worst cases (572, 1414 and 1817 ms), so a slower driver fails.
+REFRESH_MS = 650
+GREY_MS = 1600
+CLEAN_MS = 2000
+
+
 class TestSSD1677(unittest.TestCase):
     def refresh(self, panel, *frames):
         start = time.ticks_ms()
         panel.show(*frames)
         self.assertTrue(panel.busy(), "BUSY didn't rise")
         panel.wait()
-        return time.ticks_diff(time.ticks_ms(), start)
+        took = time.ticks_diff(time.ticks_ms(), start)
+        self.assertTrue(took < REFRESH_MS, "refresh took %d ms" % took)
+        return took
 
     def test_card(self):
         try:
@@ -56,8 +64,8 @@ class TestSSD1677(unittest.TestCase):
             self.skipTest(str(e))
         self.assertEqual((panel.width, panel.height), (800, 480))
         first, second = card(panel, 1), card(panel, 2)
-        self.assertTrue(self.refresh(panel, first) < 10_000)
-        self.assertTrue(self.refresh(panel, second, first) < 10_000)
+        self.refresh(panel, first)
+        self.refresh(panel, second, first)
         # 0x22 FC leaves the analog supply on; the card stays on the glass.
         panel.sleep()
 
@@ -77,7 +85,7 @@ class TestSSD1677(unittest.TestCase):
         panel.power_off()
         self.assertFalse(panel.busy())
         # The planes survive a power-off, so a partial still works.
-        self.assertTrue(self.refresh(panel, second, first) < 10_000)
+        self.refresh(panel, second, first)
         panel.sleep()
 
     # A show() cut at 0x20 leaves the supply unknown, so power_off() resets. A power-off with the
@@ -96,7 +104,7 @@ class TestSSD1677(unittest.TestCase):
             with self.assertRaises(OSError):
                 panel.wait(1000)
             panel.init()
-            self.assertTrue(self.refresh(panel, card(panel, 6)) < 10_000)
+            self.refresh(panel, card(panel, 6))
         finally:
             panel.sleep()
 
@@ -112,32 +120,38 @@ class TestSSD1677(unittest.TestCase):
         pins = (b.EPD_CS, b.EPD_DC, b.EPD_RST, b.EPD_BUSY)
         panel = ssd1677.SSD1677(bus, *pins, **reterminal_sticky._GLASS)
         try:
-            self.assertTrue(self.refresh(panel, card(panel, 2)) < 10_000)
+            self.refresh(panel, card(panel, 2))
         finally:
             panel.sleep()
 
-    # Into grey straight after a partial, twice, then back: each grey refresh resets the
-    # controller, which a second one needed on a unit, and leaves the supply off.
+    # Into grey after a partial, twice, then back: each grey refresh resets the controller, which
+    # a second one needed on a unit, and leaves the supply off.
     def test_grey(self):
         try:
             panel = reterminal_sticky.panel()
         except NotImplementedError as e:
             self.skipTest(str(e))
         grey = grey_card(panel)
-        for n in (5, 7):
+        for n, quiet in ((5, False), (7, True)):
             self.refresh(panel, card(panel, n))
             panel.show(card(panel, n + 1), card(panel, n))
+            # The first goes in while the partial runs; the second is timed from a quiet panel.
+            if quiet:
+                panel.wait()
             start = time.ticks_ms()
             panel.show_grey(grey)
             self.assertTrue(panel.busy(), "BUSY didn't rise")
             panel.wait()
-            print("grey refresh: %d ms" % time.ticks_diff(time.ticks_ms(), start))
+            took = time.ticks_diff(time.ticks_ms(), start)
+            print("grey refresh: %d ms" % took)
+            if quiet:
+                self.assertTrue(took < GREY_MS, "grey refresh took %d ms" % took)
             # A power-off with the supply already off would leave BUSY high.
             panel.power_off()
             self.assertFalse(panel.busy())
         # Full, as the planes don't hold the greys, then a partial.
-        self.assertTrue(self.refresh(panel, card(panel, 1), card(panel, 9)) < 10_000)
-        self.assertTrue(self.refresh(panel, card(panel, 2), card(panel, 1)) < 10_000)
+        self.refresh(panel, card(panel, 1), card(panel, 9))
+        self.refresh(panel, card(panel, 2), card(panel, 1))
         panel.sleep()
 
     # The controller's own full waveform, to black then white: it turns the supply off itself,
@@ -153,12 +167,11 @@ class TestSSD1677(unittest.TestCase):
             panel.clean(white)
             self.assertTrue(panel.busy(), "BUSY didn't rise")
             panel.wait()
-            print(
-                "clean to %s: %d ms"
-                % ("white" if white else "black", time.ticks_diff(time.ticks_ms(), start))
-            )
+            took = time.ticks_diff(time.ticks_ms(), start)
+            print("clean to %s: %d ms" % ("white" if white else "black", took))
+            self.assertTrue(took < CLEAN_MS, "clean took %d ms" % took)
             panel.power_off()
             self.assertFalse(panel.busy())
-        self.assertTrue(self.refresh(panel, card(panel, 1), card(panel, 9)) < 10_000)
-        self.assertTrue(self.refresh(panel, card(panel, 2), card(panel, 1)) < 10_000)
+        self.refresh(panel, card(panel, 1), card(panel, 9))
+        self.refresh(panel, card(panel, 2), card(panel, 1))
         panel.sleep()

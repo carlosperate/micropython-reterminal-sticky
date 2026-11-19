@@ -55,8 +55,8 @@ esptool --chip esp32s3 --port PORT --baud 921600 write-flash 0 sticky-backup.bin
 Tests use micropython-lib's `unittest`:
 
 ```sh
-python make.py test                     # tests/unix/ on the unix port, in Docker
-python make.py test-device --port PORT  # tests/device/ on the board, running lib/ from here
+python make.py test                     # tests/unix/ and tests/common/ on the unix port, in Docker
+python make.py test-device --port PORT  # tests/device/ and tests/common/ on the board, lib/ from here
 python make.py info --port PORT         # battery, charging and USB state
 python make.py packages                 # rewrite each lib/ package.json from its manifest.py
 ```
